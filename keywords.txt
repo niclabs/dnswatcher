@@ -1,5 +1,2 @@
-deep learning
-dga
+dns
 machine learning
-malicious domain name
-phishing
