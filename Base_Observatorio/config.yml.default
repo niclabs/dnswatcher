@@ -1,0 +1,28 @@
+#Geoip data
+#Reminder: use spaces, yaml doesn't allow tabs
+geoip:
+    geoippath: GeoLite
+    geoipasnfilename: GeoLite2-ASN.mmdb
+    geoipcountryfilename: GeoLite2-Country.mmdb
+    geoiplicensekey: yourLicenseKey
+
+# Database configurations
+database:
+    dbname: dbname
+    dbuser: dbuser
+    dbpass: password
+    dbhost: 192.168.1.1
+    dbport: 5432
+
+#runing arguments
+runargs:
+    inputfilepath: input-example.txt
+    dontprobefilepath: dontprobefile.txt
+    verbose: true
+    concurrency: 100
+    ccmax: 100
+    maxretry: 2
+    dropdatabase: false
+    debug: false
+    dnsservers: ["8.8.8.8"]
+#End of config data
