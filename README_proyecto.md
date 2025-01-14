@@ -12,10 +12,15 @@ Software desarrollado para realizar diagnósticos DNS sobre dominios, evaluando 
    - Configure las variables de entorno `$GOROOT` y `$GOPATH`.
 
 2. **Dependencias de Go**:
+   Inicialice un módulo de Go:
+   ```bash
+   go mod init dnswatcher
+   ```
+
    Instale las siguientes librerías de Go:
    ```bash
    go get github.com/miekg/dns
-   go get github.com/montivl/dnswatcher/Base_Observatorio/dnsUtils
+   go get github.com/niclabs/Observatorio/dnsUtils
    go get golang.org/x/net/idna
    ```
 
