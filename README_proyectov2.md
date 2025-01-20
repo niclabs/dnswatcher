@@ -10,41 +10,31 @@ Este software realiza diagnósticos DNS sobre dominios, evaluando sincronía de 
 - Instale Go siguiendo las instrucciones en [https://golang.org/doc/install](https://golang.org/doc/install).
 - Configure las variables de entorno `$GOROOT` y `$GOPATH` si es necesario.
 
-### 2. **Dependencias de Go**:
-
-Inicialice un módulo de Go:
-```bash
-go mod init dnswatcher
-```
-
-Instale las siguientes librerías:
-```bash
-go get github.com/gofiber/fiber/v2
-```
-```bash
-go get github.com/miekg/dns
-```
-```bash
-go get github.com/niclabs/Observatorio/dnsUtils
-```
-```bash
-go get golang.org/x/net/idna
-```
-
 ---
 
-## Instalación del proyecto
+## **Instalación del proyecto**
 
-Clonar este repositorio:
+### 1. **Clonar este repositorio**
 
 ```bash
-git clone <https://github.com/niclabs/dnswatcher.git>
+git clone https://github.com/niclabs/dnswatcher.git
 ```
-
 Entrar al directorio del proyecto:
 
 ```bash
 cd dnswatcher
+```
+
+### 2. **Dependencias de Go**:
+
+Inicializar un módulo de Go:
+```bash
+go mod init dnswatcher
+```
+
+Instale las librerías:
+```bash
+go mod tidy
 ```
 
 Compilar la aplicación:
@@ -52,16 +42,14 @@ Compilar la aplicación:
 #### En Linux
 
 ```bash
-go build -o main_drdns
+go build -o main_drdns maindns_v2.go
 ```
 
 #### En Windows
 
 ```bash
-go build -o main_drdns.exe
+go build -o main_drdns.exe maindns_v2.go
 ```
-
----
 
 ## **Uso como REST API**
 
@@ -117,10 +105,11 @@ WORKDIR /app
 COPY . .
 
 RUN go mod tidy
-RUN go build -o main_drdns .
+RUN go build -o main_drdns maindns_v2.go
 
 EXPOSE 8080
 CMD ["./main_drdns"]
+
 ```
 
 Construir el contenedor Docker:

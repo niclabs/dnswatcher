@@ -49,29 +49,10 @@ func main() {
 		return c.JSON(results)
 	})
 
-	// Canal para capturar señales del sistema
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
-
-	// Ejecutar el servidor en una gorutina
-	go func() {
-		if err := app.Listen(":8080"); err != nil {
-			log.Fatalf("Error al iniciar el servidor: %v\n", err)
-		}
-	}()
-	log.Println("Servidor iniciado en http://localhost:8081")
-
-	// Esperar señal para cerrar el servidor
-	<-quit
-	//log.Println("Apagando el servidor...")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := app.Shutdown(); err != nil {
-		log.Fatalf("Error al apagar el servidor: %v\n", err)
-	}
-
-	log.Println("Servidor detenido correctamente")
+	// Iniciar el servidor en el puerto 8080
+	log.Println("Servidor iniciado en http://localhost:8080")
+	//log.Fatal(app.Listen(":8080"))
+	log.Fatal(app.Listen(":8081"))
 }
 
 func analyzeDomain(domain string) ([]DNSResult, error) {
