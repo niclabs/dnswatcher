@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -39,24 +38,13 @@ func main() {
 
 	results, err := analyzeDomain(domain)
 	if err != nil {
-		// Guardar error en archivo JSON
 		fmt.Println("Error:", err)
-		saveErr := saveErrorToFile(domain, err.Error())
-		if saveErr != nil {
-			fmt.Println("Error guardando resultados de error:", saveErr)
-		}
 		return
 	}
 
 	// Imprimir resultados como JSON
 	output, _ := json.MarshalIndent(results, "", "  ")
 	fmt.Println(string(output))
-
-	// Guardar resultados en archivo JSON
-	err = saveResultsToFile(domain, results)
-	if err != nil {
-		fmt.Println("Error guardando resultados:", err)
-	}
 }
 
 func analyzeDomain(domain string) ([]DNSResult, error) {
@@ -166,7 +154,6 @@ func checkTCP(domain string, server string) bool {
 
 	_, _, err := client.Exchange(msg, server+":53")
 	if err != nil {
-		// fmt.Printf("Error verificando TCP en %s: %v\n", server, err)
 		return false
 	}
 	return true
@@ -180,7 +167,6 @@ func checkRecursivityAndEDNS(domain string, server string) (bool, bool) {
 
 	resp, _, err := client.Exchange(msg, server+":53")
 	if err != nil {
-		// fmt.Printf("Error verificando recursividad en %s: %v\n", server, err)
 		return false, false
 	}
 
@@ -194,112 +180,4 @@ func getReferenceSerial(serials map[string]*uint32) *uint32 {
 		return serial // Usar el primer serial como referencia
 	}
 	return nil
-}
-
-func saveResultsToFile(domain string, results []DNSResult) error {
-	// Crear carpeta JSONS si no existe
-	dir := "JSONS"
-	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-		return fmt.Errorf("no se pudo crear el directorio JSONS: %v", err)
-	}
-
-	// Crear archivo con timestamp
-	filename := fmt.Sprintf("%s-%s.json", strings.TrimSuffix(domain, "."), time.Now().Format("20060102-150405"))
-	filepath := filepath.Join(dir, filename)
-
-	file, err := os.Create(filepath)
-	if err != nil {
-		return fmt.Errorf("no se pudo crear el archivo: %v", err)
-	}
-	defer file.Close()
-
-	// Escribir resultados en el archivo
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(results); err != nil {
-		return fmt.Errorf("no se pudieron escribir los resultados: %v", err)
-	}
-
-	fmt.Printf("Resultados guardados en: %s\n", filepath)
-	return nil
-}
-
-func saveErrorToFile(domain string, errorMsg string) error {
-	// Crear carpeta JSONS si no existe
-	dir := "JSONS"
-	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-		return fmt.Errorf("no se pudo crear el directorio JSONS: %v", err)
-	}
-
-	// Crear archivo con timestamp
-	filename := fmt.Sprintf("%s-%s-error.json", strings.TrimSuffix(domain, "."), time.Now().Format("20060102-150405"))
-	filepath := filepath.Join(dir, filename)
-
-	file, err := os.Create(filepath)
-	if err != nil {
-		return fmt.Errorf("no se pudo crear el archivo: %v", err)
-	}
-	defer file.Close()
-
-	// Estructura del error
-	errorResult := map[string]string{
-		"domain": domain,
-		"error":  errorMsg,
-	}
-
-	// Escribir error en el archivo
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(errorResult); err != nil {
-		return fmt.Errorf("no se pudieron escribir los resultados: %v", err)
-	}
-
-	fmt.Printf("Resultados guardados en: %s\n", filepath)
-	return nil
-}
-
-func getParentNS(domain string, client *dns.Client) ([]string, error) {
-	parentDomain := strings.Join(strings.Split(domain, ".")[1:], ".") // Obtener el dominio superior
-	msg := new(dns.Msg)
-	msg.SetQuestion(dns.Fqdn(parentDomain), dns.TypeNS)
-
-	resp, _, err := client.Exchange(msg, "8.8.8.8:53") // Consultar a un servidor público como referencia
-	if err != nil {
-		return nil, err
-	}
-
-	var nsRecords []string
-	for _, ans := range resp.Answer {
-		if ns, ok := ans.(*dns.NS); ok {
-			nsRecords = append(nsRecords, strings.TrimSuffix(ns.Ns, "."))
-		}
-	}
-	return nsRecords, nil
-}
-
-func getPrimaryNS(domain string, client *dns.Client) ([]string, error) {
-	msg := new(dns.Msg)
-	msg.SetQuestion(dns.Fqdn(domain), dns.TypeNS)
-
-	resp, _, err := client.Exchange(msg, "8.8.8.8:53") // Consultar registros NS del dominio
-	if err != nil {
-		return nil, err
-	}
-
-	var nsRecords []string
-	for _, ans := range resp.Answer {
-		if ns, ok := ans.(*dns.NS); ok {
-			nsRecords = append(nsRecords, strings.TrimSuffix(ns.Ns, "."))
-		}
-	}
-	return nsRecords, nil
-}
-
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
 }

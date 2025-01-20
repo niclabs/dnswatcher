@@ -2,6 +2,9 @@
 *.json
 go.mod 
 go.sum
+main_drdns
+main_rest
+main_drdns.exe
 
 # extracted from https://github.com/github/gitignore/blob/main/Python.gitignore
 # Byte-compiled / optimized / DLL files
