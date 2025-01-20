@@ -23,36 +23,55 @@ type DNSResult struct {
 }
 
 func main() {
-    app := fiber.New()
+	app := fiber.New()
 
-    // Middleware para registrar solicitudes
-    app.Use(func(c *fiber.Ctx) error {
-        fmt.Printf("Solicitud recibida: %s %s\n", c.Method(), c.OriginalURL())
-        return c.Next()
-    })
+	// Middleware para registrar solicitudes
+	app.Use(func(c *fiber.Ctx) error {
+		fmt.Printf("Solicitud recibida: %s %s\n", c.Method(), c.OriginalURL())
+		return c.Next()
+	})
 
-    // Ruta para analizar un dominio
-    app.Get("/DrDNS/:domain", func(c *fiber.Ctx) error {
-        domain := c.Params("domain")
+	// Ruta para analizar un dominio
+	app.Get("/DrDNS/:domain", func(c *fiber.Ctx) error {
+		domain := c.Params("domain")
 
-        // Verificar formato correcto
-        if !strings.HasSuffix(domain, ".") {
-            domain += "."
-        }
+		// Verificar formato correcto
+		if !strings.HasSuffix(domain, ".") {
+			domain += "."
+		}
 
-        results, err := analyzeDomain(domain)
-        if err != nil {
-            return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
-        }
+		results, err := analyzeDomain(domain)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		}
 
-        // Responder con resultados en JSON
-        return c.JSON(results)
-    })
+		// Responder con resultados en JSON
+		return c.JSON(results)
+	})
 
-    // Iniciar el servidor en el puerto 8080
-    log.Println("Servidor iniciado en http://localhost:8080")
-    log.Fatal(app.Listen(":8080"))
-	//log.Fatal(app.Listen(":8081"))
+	// Canal para capturar señales del sistema
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
+	// Ejecutar el servidor en una gorutina
+	go func() {
+		if err := app.Listen(":8080"); err != nil {
+			log.Fatalf("Error al iniciar el servidor: %v\n", err)
+		}
+	}()
+	log.Println("Servidor iniciado en http://localhost:8081")
+
+	// Esperar señal para cerrar el servidor
+	<-quit
+	//log.Println("Apagando el servidor...")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := app.Shutdown(); err != nil {
+		log.Fatalf("Error al apagar el servidor: %v\n", err)
+	}
+
+	log.Println("Servidor detenido correctamente")
 }
 
 func analyzeDomain(domain string) ([]DNSResult, error) {
