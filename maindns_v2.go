@@ -51,8 +51,8 @@ func main() {
 
 	// Iniciar el servidor en el puerto 8080
 	log.Println("Servidor iniciado en http://localhost:8080")
-	//log.Fatal(app.Listen(":8080"))
-	log.Fatal(app.Listen(":8081"))
+	log.Fatal(app.Listen(":8080"))
+	//log.Fatal(app.Listen(":8081"))
 }
 
 func analyzeDomain(domain string) ([]DNSResult, error) {
