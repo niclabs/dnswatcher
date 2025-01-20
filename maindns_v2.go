@@ -23,29 +23,36 @@ type DNSResult struct {
 }
 
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	// Ruta para analizar un dominio
-	app.Get("/DrDNS/:domain", func(c *fiber.Ctx) error {
-		domain := c.Params("domain")
+    // Middleware para registrar solicitudes
+    app.Use(func(c *fiber.Ctx) error {
+        fmt.Printf("Solicitud recibida: %s %s\n", c.Method(), c.OriginalURL())
+        return c.Next()
+    })
 
-		// Verificar formato correcto
-		if !strings.HasSuffix(domain, ".") {
-			domain += "."
-		}
+    // Ruta para analizar un dominio
+    app.Get("/DrDNS/:domain", func(c *fiber.Ctx) error {
+        domain := c.Params("domain")
 
-		results, err := analyzeDomain(domain)
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
-		}
+        // Verificar formato correcto
+        if !strings.HasSuffix(domain, ".") {
+            domain += "."
+        }
 
-		// Responder con resultados en JSON
-		return c.JSON(results)
-	})
+        results, err := analyzeDomain(domain)
+        if err != nil {
+            return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+        }
 
-	// Iniciar el servidor en el puerto 8080
-	log.Println("Servidor iniciado en http://localhost:8080")
-	log.Fatal(app.Listen(":8080"))
+        // Responder con resultados en JSON
+        return c.JSON(results)
+    })
+
+    // Iniciar el servidor en el puerto 8080
+    log.Println("Servidor iniciado en http://localhost:8080")
+    log.Fatal(app.Listen(":8080"))
+	//log.Fatal(app.Listen(":8081"))
 }
 
 func analyzeDomain(domain string) ([]DNSResult, error) {

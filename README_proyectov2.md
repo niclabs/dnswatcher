@@ -19,13 +19,13 @@ go mod init dnswatcher
 
 Instale las siguientes librerías:
 ```bash
-go get github.com/gin-gonic/gin
+go get github.com/gofiber/fiber/v2
 ```
 ```bash
 go get github.com/miekg/dns
 ```
 ```bash
-go get github.com/niclabs/dnswatcher/Base_Observatorio/dnsUtils
+go get github.com/niclabs/Observatorio/dnsUtils
 ```
 ```bash
 go get golang.org/x/net/idna
@@ -37,42 +37,80 @@ go get golang.org/x/net/idna
 
 Clonar este repositorio:
 
+```bash
 git clone <https://github.com/niclabs/dnswatcher.git>
+```
 
 Entrar al directorio del proyecto:
 
+```bash
 cd dnswatcher
+```
 
 Compilar la aplicación:
 
-go build -o main_drdns
+#### En Linux
 
-### Uso como REST API
+```bash
+go build -o main_drdns
+```
+
+#### En Windows
+
+```bash
+go build -o main_drdns.exe
+```
+
+---
+
+## **Uso como REST API**
 
 Ejecutar el server:
 
+#### En Linux
+
+```bash
 ./main_drdns
+```
 
-El servidor quedará disponible en el puerto 8080.
+#### En Windows
 
-Solicitar un diagnóstico
+```bash
+main_drdns.exe
+```
 
-Realice una petición HTTP GET a la ruta /DrDNS/{domain} donde {domain} es el dominio a analizar.
+El servidor quedará disponible en el puerto `8080`. Si este puerto está en uso, se puede modificar la línea:
 
-Ejemplo con curl:
+```go
+log.Fatal(app.Listen(":8080"))
+```
 
+A un puerto alternativo como el `8081`
+
+
+### Solicitar un diagnóstico
+
+Realice una petición HTTP GET a la ruta `/DrDNS/{domain}` donde `{domain}` es el dominio a analizar.
+
+Ejemplo con `curl`:
+
+```bash
 curl http://localhost:8080/DrDNS/nic.cl
+```
 
-o simplemente ingresar el http en el buscador.
+O simplemente ingresar la URL en el navegador.
 
-Respuesta esperada será el servidor retornando un JSON con la información correspondiente.
+La respuesta esperada será un JSON con la información correspondiente.
 
-### Dockerización
+---
+
+## **Dockerización**
 
 #### Crear una imagen Docker para el proyecto:
 
-Cree un archivo Dockerfile con el siguiente contenido:
+Cree un archivo Dockerfile, se deja un archivo base simple que sirve usando el localhost:
 
+```dockerfile
 FROM golang:1.23.4
 
 WORKDIR /app
@@ -83,21 +121,28 @@ RUN go build -o main_drdns .
 
 EXPOSE 8080
 CMD ["./main_drdns"]
+```
 
 Construir el contenedor Docker:
 
+```bash
 docker build -t maindns-service .
+```
 
 Ejecute el contenedor:
 
+```bash
 docker run -p 8080:8080 maindns-service
+```
 
-Contribuciones y Reconocimientos
+---
+
+## **Contribuciones y Reconocimientos**
 
 Este proyecto fue desarrollado con el apoyo de Observatorio.
 
 Agradecimientos especiales a:
 
-@maitegm
+- @maitegm
+- @madestro
 
-@madestro
