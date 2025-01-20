@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
-	"net/http"
+	"log"
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v2"
 	"github.com/miekg/dns"
 	"github.com/niclabs/Observatorio/dnsUtils"
 	"golang.org/x/net/idna"
@@ -23,12 +23,11 @@ type DNSResult struct {
 }
 
 func main() {
-	// Iniciar servidor web con Gin
-	r := gin.Default()
+	app := fiber.New()
 
 	// Ruta para analizar un dominio
-	r.GET("/analyze/:domain", func(c *gin.Context) {
-		domain := c.Param("domain")
+	app.Get("/DrDNS/:domain", func(c *fiber.Ctx) error {
+		domain := c.Params("domain")
 
 		// Verificar formato correcto
 		if !strings.HasSuffix(domain, ".") {
@@ -37,16 +36,16 @@ func main() {
 
 		results, err := analyzeDomain(domain)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 		}
 
 		// Responder con resultados en JSON
-		c.JSON(http.StatusOK, results)
+		return c.JSON(results)
 	})
 
-	// Iniciar servidor en el puerto 8080
-	r.Run(":8080")
+	// Iniciar el servidor en el puerto 8080
+	log.Println("Servidor iniciado en http://localhost:8080")
+	log.Fatal(app.Listen(":8080"))
 }
 
 func analyzeDomain(domain string) ([]DNSResult, error) {
@@ -68,7 +67,7 @@ func analyzeDomain(domain string) ([]DNSResult, error) {
 	}
 
 	if len(nsServers) == 0 {
-		return nil, fmt.Errorf("no se encontraron servidores NS para el dominio %s", domain)
+		return nil, fmt.Errorf("No se encontraron servidores NS para el dominio %s", domain)
 	}
 
 	serials := make(map[string]*uint32)

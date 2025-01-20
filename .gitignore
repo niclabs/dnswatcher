@@ -2,6 +2,8 @@
 *.json
 go.mod 
 go.sum
+maindns_drdns
+maindns_rest
 
 # extracted from https://github.com/github/gitignore/blob/main/Python.gitignore
 # Byte-compiled / optimized / DLL files

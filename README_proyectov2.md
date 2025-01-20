@@ -25,7 +25,7 @@ go get github.com/gin-gonic/gin
 go get github.com/miekg/dns
 ```
 ```bash
-go get github.com/niclabs/Observatorio/dnsUtils
+go get github.com/niclabs/dnswatcher/Base_Observatorio/dnsUtils
 ```
 ```bash
 go get golang.org/x/net/idna
@@ -33,98 +33,71 @@ go get golang.org/x/net/idna
 
 ---
 
-## **Instalación del proyecto**
+## Instalación del proyecto
 
-Clone este repositorio:
-```bash
+Clonar este repositorio:
+
 git clone <https://github.com/niclabs/dnswatcher.git>
-```
 
-Entre al directorio del proyecto:
-```bash
+Entrar al directorio del proyecto:
+
 cd dnswatcher
-```
 
-Compile la aplicación:
-```bash
-go build -o maindns_rest
-```
+Compilar la aplicación:
 
----
+go build -o main_drdns
 
-## **Uso como REST API**
+### Uso como REST API
 
-Ejecute el servidor:
-```bash
-./maindns_rest
-```
+Ejecutar el server:
 
-El servidor quedará disponible en el puerto `8080`.
+./main_drdns
 
-### **Solicitar un diagnóstico**
+El servidor quedará disponible en el puerto 8080.
 
-Realice una petición HTTP GET a la ruta `/analyze/{domain}` donde `{domain}` es el dominio a analizar.
+Solicitar un diagnóstico
 
-Ejemplo con `curl`:
-```bash
-curl http://localhost:8080/analyze/google.com
-```
+Realice una petición HTTP GET a la ruta /DrDNS/{domain} donde {domain} es el dominio a analizar.
 
-### **Respuesta esperada**
-El servidor retorna un JSON con el formato:
-```json
-[
-  {
-    "server": "ns1.example.com",
-    "serial": 20230101,
-    "serial_sync": true,
-    "authority": true,
-    "recursivity_off": true,
-    "tcp": true
-  },
-  {
-    "server": "ns2.example.com",
-    "error": "NS no verificable: query timed out"
-  }
-]
-```
+Ejemplo con curl:
 
----
+curl http://localhost:8080/DrDNS/nic.cl
 
-## **Dockerización**
+o simplemente ingresar el http en el buscador.
 
-Cree una imagen Docker para el proyecto:
+Respuesta esperada será el servidor retornando un JSON con la información correspondiente.
 
-1. **Cree un archivo Dockerfile con el siguiente contenido:**
-   ```dockerfile
-   FROM golang:1.23.4
+### Dockerización
 
-   WORKDIR /app
-   COPY . .
+#### Crear una imagen Docker para el proyecto:
 
-   RUN go mod tidy
-   RUN go build -o maindns_rest .
+Cree un archivo Dockerfile con el siguiente contenido:
 
-   EXPOSE 8080
-   CMD ["./maindns_rest"]
-   ```
+FROM golang:1.23.4
 
-2. **Construya la imagen Docker:**
-   ```bash
-   docker build -t maindns-service .
-   ```
+WORKDIR /app
+COPY . .
 
-3. **Ejecute el contenedor:**
-   ```bash
-   docker run -p 8080:8080 maindns-service
-   ```
+RUN go mod tidy
+RUN go build -o main_drdns .
 
----
+EXPOSE 8080
+CMD ["./main_drdns"]
 
-## **Contribuciones y Reconocimientos**
+Construir el contenedor Docker:
 
-- Este proyecto fue desarrollado con el apoyo de Observatorio.
-- Agradecimientos especiales a:
-  - @maitegm
-  - @madestro
+docker build -t maindns-service .
 
+Ejecute el contenedor:
+
+docker run -p 8080:8080 maindns-service
+
+Contribuciones y Reconocimientos
+
+Este proyecto fue desarrollado con el apoyo de Observatorio.
+
+Agradecimientos especiales a:
+
+@maitegm
+
+@madestro
