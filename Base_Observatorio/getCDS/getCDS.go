@@ -3,20 +3,20 @@ package main
 import (
 	"bufio"
 	"database/sql"
-	"encoding/csv"
+	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/howeyc/gopass"
-	_ "github.com/lib/pq"
-	"github.com/miekg/dns"
-	"github.com/niclabs/Observatorio/dbController"
-	"github.com/niclabs/Observatorio/utils"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/howeyc/gopass"
+	_ "github.com/lib/pq"
+	"github.com/miekg/dns"
+	"github.com/niclabs/Observatorio/dbController"
 )
 
 //usage: -i=input_file -c=100 -u=user -pw=pass -db=database
@@ -54,22 +54,35 @@ func getCDSInfo(domainName string, runId int, config *dns.ClientConfig, db *sql.
 	if error != nil {
 		fmt.Println(error)
 	} else {
+		var data []map[string]interface{}
 		for _, record := range records.Answer {
-			if _, ok := record.(*dns.CDS); ok {
-				dt := record.(*dns.CDS).DigestType
-				dg := record.(*dns.CDS).Digest
-				kt := record.(*dns.CDS).KeyTag
-				al := record.(*dns.CDS).Algorithm
-				r := []string{domainName, strconv.Itoa(int(kt)), strconv.Itoa(int(al)), strconv.Itoa(int(dt)), dg}
-				err = csvWriter.Write(r)
-				if err != nil {
-					fmt.Println(err)
+			if cds, ok := record.(*dns.CDS); ok {
+				dt := cds.DigestType
+				dg := cds.Digest
+				kt := cds.KeyTag
+				al := cds.Algorithm
+				entry := map[string]interface{}{
+					"domain":      domainName,
+					"key_tag":     kt,
+					"algorithm":   al,
+					"digest_type": dt,
+					"digest":      dg,
 				}
-				fmt.Println(r)
-				//(dns.CDS)(record).DigestType
-				//(dns.CDS)(record).KeyTag
-				//(dns.CDS)(record).Algorithm
-				//writeToResultsFile(record.String())
+				data = append(data, entry)
+			}
+		}
+		if len(data) > 0 {
+			filename := fmt.Sprintf("%s/%d_CDS_%s.json", resultsFolder, runId, domainName)
+			file, err := os.Create(filename)
+			if err != nil {
+				fmt.Printf("Error creating JSON file: %v", err)
+				return
+			}
+			defer file.Close()
+			encoder := json.NewEncoder(file)
+			encoder.SetIndent("", "  ")
+			if err := encoder.Encode(data); err != nil {
+				fmt.Printf("Error writing JSON: %v", err)
 			}
 		}
 	}
@@ -124,6 +137,7 @@ func DispatchCollectors(db *sql.DB, inputFile string, runId int, debugVar bool, 
 	writeToResultsFile("Successful Run. run_id: " + strconv.Itoa(runId))
 	db.Close()
 }
+
 func initResultsFile() {
 	var err error
 	f := "2006-01-02T15:04:05"
@@ -139,37 +153,24 @@ func initResultsFile() {
 	}
 	// close fo on exit and check for its returned error
 }
+
 func writeToResultsFile(s string) {
-	if _, err := fo.WriteString(s + "\n"); err != nil {
-		fmt.Println("error escribiendo en output", err.Error())
+	filename := "results_log.json"
+	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Println("error opening results file", err.Error())
+		return
+	}
+	defer file.Close()
+	entry := map[string]string{"message": s, "timestamp": time.Now().Format(time.RFC3339)}
+	encoder := json.NewEncoder(file)
+	if err := encoder.Encode(entry); err != nil {
+		fmt.Println("error writing to results file", err.Error())
 	}
 }
-
-var csvWriter *csv.Writer
 
 func closeResultsFile() {
 	fo.Close()
-}
-
-var csvFile os.File
-
-func initCSV() {
-
-	f := "2006-01-02T15:04:05"
-	ts := time.Now().Format(f)
-
-	filename := "results-" + ts + ".csv"
-	folder := "CDS_csvs"
-
-	csvFile, err := utils.CreateFile(folder, filename)
-	if err != nil {
-		fmt.Println(err.Error())
-	}
-	csvWriter = csv.NewWriter(csvFile)
-}
-func closeCSV() {
-	csvWriter.Flush()
-	csvFile.Close()
 }
 
 func collectCDS(inputfile string, concurrency int, ccmax int, maxRetry int, dropdatabase bool, database string, user string, password string, debug bool) {
@@ -177,14 +178,10 @@ func collectCDS(inputfile string, concurrency int, ccmax int, maxRetry int, drop
 }
 
 func main() {
-
 	inputFile, concurrency, ccmax, maxRetry, dropDatabase, database, user, password, debug := readArguments()
-	initResultsFile()
-	initCSV()
 
 	Drop = *dropDatabase
-	var retry = 0 //initial retry
-	db, err := sql.Open("postgres", "user="+*user+" password="+password+" dbname="+*database+" sslmode=disable")
+	db, err := sql.Open("postgres", "user="+*user+" password="+*password+" dbname="+*database+" sslmode=disable")
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -192,39 +189,25 @@ func main() {
 	CreateTables(db)
 	db.Close()
 
-	for *concurrency <= ccmax { //used only for performance evaluation
-		for retry < *maxRetry { //used only for performance evaluation
-
-			db, err := sql.Open("postgres", "user="+*user+" password="+password+" dbname="+*database+" sslmode=disable")
+	for *concurrency <= ccmax {
+		for retry := 0; retry < *maxRetry; retry++ {
+			db, err := sql.Open("postgres", "user="+*user+" password="+*password+" dbname="+*database+" sslmode=disable")
 			if err != nil {
 				fmt.Println(err)
 				return
 			}
-			fmt.Println("EXECUTING WITH ", concurrency, " GOROUTINES; retry: ", retry)
-			writeToResultsFile("EXECUTING WITH " + strconv.Itoa(*concurrency) + " GOROUTINES; retry: " + strconv.Itoa(retry))
+			fmt.Println("EXECUTING WITH ", *concurrency, " GOROUTINES; retry: ", retry)
+			writeToResultsFile(fmt.Sprintf("EXECUTING WITH %d GOROUTINES; retry: %d", *concurrency, retry))
 
 			runId := NewRun(db)
-			/*Collect data*/
 			DispatchCollectors(db, *inputFile, runId, *debug, *concurrency)
-
-			fmt.Println("TotalTime(nsec):", TotalTime, " (sec) ", TotalTime/1000000000, " (min:sec) ", TotalTime/60000000000, ":", TotalTime%60000000000/1000000000)
-			writeToResultsFile("TotalTime(nsec):" + strconv.Itoa(TotalTime) + " (sec) " + strconv.Itoa(TotalTime/1000000000) + " (min:sec) " + strconv.Itoa(TotalTime/60000000000) + ":" + strconv.Itoa(TotalTime%60000000000/1000000000))
-			//var line string;
-			//line = string(strconv.Itoa(run_id) + ", "+ strconv.Itoa(Concurrency) + ", " + strconv.Itoa(retry)+ ", " + strconv.Itoa(ec) + ", " + strconv.Itoa(tc) + ", " +strconv.Itoa(trc) + ", " + strconv.Itoa(tt))
-			//fmt.Println(line)
 			db.Close()
-			retry++
 		}
 		*concurrency++
-		retry = 0
 	}
-
-	closeResultsFile()
-	closeCSV()
-
 }
 
-//usage: -i=input-file -c=100 -u=user -pw=pass -db=database
+// usage: -i=input-file -c=100 -u=user -pw=pass -db=database
 func readArguments() (inputfile *string, concurrency *int, ccmax int, maxRetry *int, dropdatabase *bool, db *string, u *string, pass string, debug *bool) {
 	inputfile = flag.String("i", "", "Input file with domains to analize")
 	concurrency = flag.Int("c", 50, "Concurrency: how many routines")
