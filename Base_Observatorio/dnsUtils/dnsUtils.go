@@ -2,12 +2,12 @@ package dnsUtils
 
 import (
 	"bytes"
-
 	"fmt"
-	"github.com/miekg/dns"
 	"net"
 	"strings"
 	"time"
+
+	"github.com/miekg/dns"
 )
 
 // Make a DNS request retrying 3 times

@@ -2,8 +2,6 @@ package geoIPUtils
 
 import (
 	"fmt"
-	"github.com/niclabs/Observatorio/utils"
-	"github.com/oschwald/geoip2-golang"
 	"io"
 	"log"
 	"net"
@@ -13,6 +11,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/niclabs/Observatorio/utils"
+	"github.com/oschwald/geoip2-golang"
 )
 
 type GeoipDB struct {
@@ -37,12 +38,12 @@ func InitGeoIP(geoipPath string, geoipCountryDbName string, geoipAsnDbName strin
 }
 
 func CloseGeoIP(geoipDB *GeoipDB) {
-	err :=geoipDB.CountryDb.Close()
-	if err!=nil{
+	err := geoipDB.CountryDb.Close()
+	if err != nil {
 		fmt.Println(err)
 	}
 	err = geoipDB.AsnDb.Close()
-	if err!=nil{
+	if err != nil {
 		fmt.Println(err)
 	}
 }
@@ -51,14 +52,14 @@ func downloadGeoIp(licenseKey string, geoipPath string, geoipAsnFilename string,
 
 	//check if directory exists (create if not exists)
 	if _, err := os.Stat(geoipPath); os.IsNotExist(err) {
-		err = os.Mkdir(geoipPath,os.ModePerm)
-		if err!=nil{
+		err = os.Mkdir(geoipPath, os.ModePerm)
+		if err != nil {
 			fmt.Println(err)
 			return false
 		}
 	}
-	urlAsn := "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-ASN&license_key="+ licenseKey +"&suffix=tar.gz"
-	urlCountry := "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-Country&license_key="+ licenseKey +"&suffix=tar.gz"
+	urlAsn := "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-ASN&license_key=" + licenseKey + "&suffix=tar.gz"
+	urlCountry := "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-Country&license_key=" + licenseKey + "&suffix=tar.gz"
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -70,7 +71,7 @@ func downloadGeoIp(licenseKey string, geoipPath string, geoipAsnFilename string,
 
 	return true
 }
-func downloadFile(url string, filepath string,  wg *sync.WaitGroup ) {
+func downloadFile(url string, filepath string, wg *sync.WaitGroup) {
 	defer wg.Done()
 	// Get the data
 	resp, err := http.Get(url)
@@ -81,30 +82,30 @@ func downloadFile(url string, filepath string,  wg *sync.WaitGroup ) {
 
 	defer resp.Body.Close()
 	// Create the file
-	out, err := os.Create(filepath+".tar.gz")
+	out, err := os.Create(filepath + ".tar.gz")
 	if err != nil {
 		log.Fatal(err)
 		return
 	}
-	defer os.Remove(filepath+".tar.gz")
+	defer os.Remove(filepath + ".tar.gz")
 	defer out.Close()
 	// Write the body to file
 	_, err = io.Copy(out, resp.Body)
-	if err!=nil{
+	if err != nil {
 		log.Fatal(err)
 	}
 
-	targz, err := os.Open(filepath+".tar.gz")
-	if err!=nil{
+	targz, err := os.Open(filepath + ".tar.gz")
+	if err != nil {
 		log.Fatal(err)
 	}
 	defer targz.Close()
 	newFolderName := utils.ExtractTarGz(targz)
 	//defer os.RemoveAll(newFolderName)
-	folderType :=""
-	if strings.Contains(newFolderName,"ASN"){
+	folderType := ""
+	if strings.Contains(newFolderName, "ASN") {
 		folderType = "ASN"
-	}else{
+	} else {
 		folderType = "Country"
 	}
 	newFilepath := newFolderName + "GeoLite2-" + folderType + ".mmdb"
@@ -116,19 +117,16 @@ func downloadFile(url string, filepath string,  wg *sync.WaitGroup ) {
 		log.Fatal(err)
 	}
 
-
 	return
 }
 
-
-
-//Checks if databases exists, if exists, check if they are updated, return (bool)databases_found and (bool)databases_updated
+// Checks if databases exists, if exists, check if they are updated, return (bool)databases_found and (bool)databases_updated
 func checkDatabases(geoipPath string, geoipCountryDbName string, geoipAsnDbName string, geoipLicenseKey string) (bool, bool) {
 	goAgain := true
-	file := geoipPath +"/" +  geoipCountryDbName
+	file := geoipPath + "/" + geoipCountryDbName
 	databasesFound := false
 	databasesUpdated := false
-	if(false) {
+	if false {
 	checkdb:
 		if fileInfo, err := os.Stat(file); err == nil {
 			databasesFound = true
@@ -147,7 +145,7 @@ func checkDatabases(geoipPath string, geoipCountryDbName string, geoipAsnDbName 
 		}
 	}
 	fmt.Println("Updating geoip databases")
-	got := downloadGeoIp(geoipLicenseKey,geoipPath, geoipAsnDbName, geoipCountryDbName)
+	got := downloadGeoIp(geoipLicenseKey, geoipPath, geoipAsnDbName, geoipCountryDbName)
 	if !got {
 		fmt.Println("Attempting to Download failed!! :( ")
 	} else {

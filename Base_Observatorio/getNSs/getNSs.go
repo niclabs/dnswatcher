@@ -2,21 +2,20 @@ package main
 
 import (
 	"database/sql"
-	_ "github.com/lib/pq"
-	"github.com/niclabs/Observatorio/dbController"
+	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
+	"os"
 	"sync"
 	"time"
-	"encoding/csv"
-	"flag"
+
 	"github.com/howeyc/gopass"
-	"os"
-	"strconv"
+	"github.com/niclabs/Observatorio/dbController"
 )
 
 var mutexTT *sync.Mutex
-var csvsFolder = "csvs"
+var jsonsFolder = "jsons"
 
 func main() {
 	p := flag.Bool("p", false, "Prompt for password?")
@@ -112,14 +111,14 @@ func CheckDomainInfo(domainId int, db *sql.DB) {
 
 /*global statistics*/
 func getGlobalStatistics(runId int, ts string, db *sql.DB) {
-	initcsvsFolder()
+	initjsonsFolder()
 	saveDispersion(runId, ts, db)
 	saveDNSSEC(runId, ts, db)
 	saveCountNameserverCharacteristics(runId, ts, db)
 }
-func initcsvsFolder() {
-	if _, err := os.Stat(csvsFolder); os.IsNotExist(err) {
-		os.Mkdir(csvsFolder, os.ModePerm)
+func initjsonsFolder() {
+	if _, err := os.Stat(jsonsFolder); os.IsNotExist(err) {
+		os.Mkdir(jsonsFolder, os.ModePerm)
 	}
 }
 
@@ -134,328 +133,334 @@ func saveDispersion(runId int, ts string, db *sql.DB) {
 	saveCountDomainsWithCountNSIPs(runId, ts, db)
 	saveCountDomainsWithCountNSIPExclusive(runId, ts, db)
 }
+
 func saveCountDomainsWithCountNSIPExclusive(runId int, ts string, db *sql.DB) {
 	rows, err := dbController.CountDomainsWithCountNSIPExclusive(runId, db)
 	if err != nil {
 		panic(err)
 	}
 	defer rows.Close()
-	filename := "csvs/" + strconv.Itoa(runId) + "CountDomainsWithCountNSIPExclusive" + ts + ".csv"
+
+	filename := fmt.Sprintf("%s/%d_CountDomainsWithCountNSIPExclusive_%s.json", jsonsFolder, runId, ts)
 	file, err := os.Create(filename)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error creating JSON file: %v", err)
 	}
 	defer file.Close()
 
-	writer := csv.NewWriter(file)
+	var data []map[string]interface{}
 	columns, err := rows.Columns()
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error getting columns: %v", err)
 	}
-	writer.Write([]string{columns[0], columns[1]})
+
 	for rows.Next() {
-		var family int
-		var num int
-		if err := rows.Scan(&num, &family); err != nil {
-			log.Fatal(err)
+		row := make(map[string]interface{})
+		values := make([]interface{}, len(columns))
+		pointers := make([]interface{}, len(columns))
+		for i := range values {
+			pointers[i] = &values[i]
 		}
-		line := []string{strconv.Itoa(num), strconv.Itoa(family)}
-		err := writer.Write(line)
-		if err != nil {
-			panic(err)
+		if err := rows.Scan(pointers...); err != nil {
+			log.Fatalf("Error scanning row: %v", err)
 		}
+		for i, col := range columns {
+			row[col] = values[i]
+		}
+		data = append(data, row)
 	}
-	defer writer.Flush()
 	if err := rows.Err(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error iterating rows: %v", err)
+	}
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(data); err != nil {
+		log.Fatalf("Error encoding JSON: %v", err)
 	}
 }
+
 func saveCountCountryPerDomain(runId int, ts string, db *sql.DB) {
 	rows, err := dbController.CountCountryPerDomain(runId, db)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error counting country per domain: %v", err)
 	}
 	defer rows.Close()
-	filename := "csvs/" + strconv.Itoa(runId) + "CountCountryPerDomain" + ts + ".csv"
+
+	filename := fmt.Sprintf("%s/%d_CountCountryPerDomain_%s.json", jsonsFolder, runId, ts)
 	file, err := os.Create(filename)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error creating JSON file: %v", err)
 	}
 	defer file.Close()
 
-	writer := csv.NewWriter(file)
+	var data []map[string]interface{}
 	columns, err := rows.Columns()
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error getting columns: %v", err)
 	}
-	writer.Write([]string{columns[0], columns[1]})
+
 	for rows.Next() {
-		var numCountries int
-		var num int
-		if err := rows.Scan(&numCountries, &num); err != nil {
-			log.Fatal(err)
+		row := make(map[string]interface{})
+		values := make([]interface{}, len(columns))
+		pointers := make([]interface{}, len(columns))
+		for i := range values {
+			pointers[i] = &values[i]
 		}
-		line := []string{strconv.Itoa(numCountries), strconv.Itoa(num)}
-		err := writer.Write(line)
-		if err != nil {
-			panic(err)
+		if err := rows.Scan(pointers...); err != nil {
+			log.Fatalf("Error scanning row: %v", err)
 		}
+		for i, col := range columns {
+			row[col] = values[i]
+		}
+		data = append(data, row)
 	}
-	defer writer.Flush()
 	if err := rows.Err(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error iterating rows: %v", err)
 	}
 
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(data); err != nil {
+		log.Fatalf("Error encoding JSON: %v", err)
+	}
 }
-func saveCountASNPerDomain(runId int, ts string, db *sql.DB) {
-	rows, err := dbController.CountASNPerDomain(runId, db)
-	if err != nil {
-		panic(err)
-	}
-	defer rows.Close()
-	filename := "csvs/" + strconv.Itoa(runId) + "CountASNPerDomain" + ts + ".csv"
-	file, err := os.Create(filename)
-	if err != nil {
-		panic(err)
-	}
-	defer file.Close()
 
-	writer := csv.NewWriter(file)
-	columns, err := rows.Columns()
-	if err != nil {
-		panic(err)
-	}
-	writer.Write(columns)
-	for rows.Next() {
-		var numASN int
-		var num int
-		if err := rows.Scan(&numASN, &num); err != nil {
-			log.Fatal(err)
-		}
-		line := []string{strconv.Itoa(numASN), strconv.Itoa(num)}
-		err := writer.Write(line)
-		if err != nil {
-			panic(err)
-		}
-	}
-	defer writer.Flush()
-	if err := rows.Err(); err != nil {
-		log.Fatal(err)
-	}
-
-}
 func saveCountNSPerDomain(runId int, ts string, db *sql.DB) {
 	rows, err := dbController.CountNSPerDomain(runId, db)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error counting NS per domain: %v", err)
 	}
 	defer rows.Close()
-	filename := "csvs/" + strconv.Itoa(runId) + "CountNSPerDomain" + ts + ".csv"
+
+	filename := fmt.Sprintf("%s/%d_CountNSPerDomain_%s.json", jsonsFolder, runId, ts)
 	file, err := os.Create(filename)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error creating JSON file: %v", err)
 	}
 	defer file.Close()
 
-	writer := csv.NewWriter(file)
+	var data []map[string]interface{}
 	columns, err := rows.Columns()
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error getting columns: %v", err)
 	}
-	writer.Write(columns)
+
 	for rows.Next() {
-		var numNS int
-		var num int
-		if err := rows.Scan(&numNS, &num); err != nil {
-			log.Fatal(err)
+		row := make(map[string]interface{})
+		values := make([]interface{}, len(columns))
+		pointers := make([]interface{}, len(columns))
+		for i := range values {
+			pointers[i] = &values[i]
 		}
-		line := []string{strconv.Itoa(numNS), strconv.Itoa(num)}
-		err := writer.Write(line)
-		if err != nil {
-			panic(err)
+		if err := rows.Scan(pointers...); err != nil {
+			log.Fatalf("Error scanning row: %v", err)
 		}
+		for i, col := range columns {
+			row[col] = values[i]
+		}
+		data = append(data, row)
 	}
-	defer writer.Flush()
 	if err := rows.Err(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error iterating rows: %v", err)
+	}
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(data); err != nil {
+		log.Fatalf("Error encoding JSON: %v", err)
 	}
 }
+
 func saveCountNSCountryASNPerDomain(runId int, ts string, db *sql.DB) {
 	rows, err := dbController.CountNSCountryASNPerDomain(runId, db)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error counting NS Country ASN per domain: %v", err)
 	}
 	defer rows.Close()
-	filename := "csvs/" + strconv.Itoa(runId) + "CountNSCountryASNPerDomain" + ts + ".csv"
+
+	filename := fmt.Sprintf("%s/%d_CountNSCountryASNPerDomain_%s.json", jsonsFolder, runId, ts)
 	file, err := os.Create(filename)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error creating JSON file: %v", err)
 	}
 	defer file.Close()
 
-	writer := csv.NewWriter(file)
+	var data []map[string]interface{}
 	columns, err := rows.Columns()
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error getting columns: %v", err)
 	}
-	writer.Write([]string{columns[0], columns[1], columns[2], columns[3]})
+
 	for rows.Next() {
-		var numCountries int
-		var numNS int
-		var numASN int
-		var num int
-		if err := rows.Scan(&num, &numNS, &numASN, &numCountries); err != nil {
-			log.Fatal(err)
+		row := make(map[string]interface{})
+		values := make([]interface{}, len(columns))
+		pointers := make([]interface{}, len(columns))
+		for i := range values {
+			pointers[i] = &values[i]
 		}
-		line := []string{strconv.Itoa(num), strconv.Itoa(numNS), strconv.Itoa(numASN), strconv.Itoa(numCountries)}
-		err := writer.Write(line)
-		if err != nil {
-			panic(err)
+		if err := rows.Scan(pointers...); err != nil {
+			log.Fatalf("Error scanning row: %v", err)
 		}
+		for i, col := range columns {
+			row[col] = values[i]
+		}
+		data = append(data, row)
 	}
-	defer writer.Flush()
 	if err := rows.Err(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error iterating rows: %v", err)
+	}
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(data); err != nil {
+		log.Fatalf("Error encoding JSON: %v", err)
 	}
 }
+
 func saveCountNSIPv4IPv6(runId int, ts string, db *sql.DB) {
 	rows, err := dbController.CountDistinctNSWithIPv4(runId, db)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error counting distinct NS with IPv4: %v", err)
 	}
 	var countIPv4 int
 	defer rows.Close()
 	for rows.Next() {
 		if err := rows.Scan(&countIPv4); err != nil {
-			log.Fatal(err)
+			log.Fatalf("Error scanning countIPv4: %v", err)
 		}
 	}
+
 	rows, err = dbController.CountDistinctNSWithIPv6(runId, db)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error counting distinct NS with IPv6: %v", err)
 	}
 	var countIPv6 int
 	defer rows.Close()
 	for rows.Next() {
 		if err := rows.Scan(&countIPv6); err != nil {
-			log.Fatal(err)
+			log.Fatalf("Error scanning countIPv6: %v", err)
 		}
 	}
 
-	filename := "csvs/" + strconv.Itoa(runId) + "CountNSIPv4IPv6" + ts + ".csv"
+	filename := fmt.Sprintf("%s/%d_CountNSIPv4IPv6_%s.json", jsonFolder, runId, ts)
 	file, err := os.Create(filename)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error creating JSON file: %v", err)
 	}
 	defer file.Close()
 
-	writer := csv.NewWriter(file)
-	err = writer.Write([]string{"countIPv4", "countIPv6"})
-	if err != nil {
-		panic(err)
+	data := map[string]int{
+		"countIPv4": countIPv4,
+		"countIPv6": countIPv6,
 	}
-	line := []string{strconv.Itoa(countIPv4), strconv.Itoa(countIPv6)}
-	err = writer.Write(line)
-	if err != nil {
-		panic(err)
-	}
-	defer writer.Flush()
-	if err := rows.Err(); err != nil {
-		log.Fatal(err)
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(data); err != nil {
+		log.Fatalf("Error encoding JSON: %v", err)
 	}
 }
+
 func saveCountDomainsWithCountNSIPs(runId int, ts string, db *sql.DB) {
 	rows, err := dbController.CountDomainsWithCountNSIp(runId, db)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error counting domains with NS IPs: %v", err)
 	}
 	defer rows.Close()
-	filename := "csvs/" + strconv.Itoa(runId) + "CountDomainsWithCountNSIps" + ts + ".csv"
+
+	filename := fmt.Sprintf("%s/%d_CountDomainsWithCountNSIPs_%s.json", jsonFolder, runId, ts)
 	file, err := os.Create(filename)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error creating JSON file: %v", err)
 	}
 	defer file.Close()
 
-	writer := csv.NewWriter(file)
+	var data []map[string]interface{}
 	columns, err := rows.Columns()
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error getting columns: %v", err)
 	}
-	writer.Write([]string{columns[0], columns[1], columns[2], columns[3]})
+
 	for rows.Next() {
-		var numIP int
-		var numIPv6 int
-		var numIPv4 int
-		var num int
-		if err := rows.Scan(&num, &numIP, &numIPv4, &numIPv6); err != nil {
-			log.Fatal(err)
+		row := make(map[string]interface{})
+		values := make([]interface{}, len(columns))
+		pointers := make([]interface{}, len(columns))
+		for i := range values {
+			pointers[i] = &values[i]
 		}
-		line := []string{strconv.Itoa(num), strconv.Itoa(numIP), strconv.Itoa(numIPv4), strconv.Itoa(numIPv6)}
-		err := writer.Write(line)
-		if err != nil {
-			panic(err)
+		if err := rows.Scan(pointers...); err != nil {
+			log.Fatalf("Error scanning row: %v", err)
 		}
+		for i, col := range columns {
+			row[col] = values[i]
+		}
+		data = append(data, row)
 	}
-	defer writer.Flush()
 	if err := rows.Err(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error iterating rows: %v", err)
+	}
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(data); err != nil {
+		log.Fatalf("Error encoding JSON: %v", err)
 	}
 }
+
 func saveCountDNSSEC(runId int, ts string, db *sql.DB) {
 	dnssecFail, dnssecOk, noDnssec := dbController.CountDomainsWithDNSSEC(runId, db)
-	filename := "csvs/" + strconv.Itoa(runId) + "CountDomainsWithDNSSEC" + ts + ".csv"
+	filename := fmt.Sprintf("%s/%d_CountDomainsWithDNSSEC_%s.json", jsonsFolder, runId, ts)
 	file, err := os.Create(filename)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error creating JSON file: %v", err)
 	}
 	defer file.Close()
-	writer := csv.NewWriter(file)
-
 	/*categoría, cantidad de dominios
 	no_dnssec, 800
 	dnssec_fail, 110
 	dnssec_ok, 90
 	*/
-	writer.Write([]string{"category", "domains"})
-	line := []string{"no_dnssec", strconv.Itoa(noDnssec)}
-	err = writer.Write(line)
-	if err != nil {
-		panic(err)
+	data := []map[string]interface{}{
+		{"category": "no_dnssec", "domains": noDnssec},
+		{"category": "dnssec_fail", "domains": dnssecFail},
+		{"category": "dnssec_ok", "domains": dnssecOk},
 	}
-	line = []string{"dnssec_fail", strconv.Itoa(dnssecFail)}
-	err = writer.Write(line)
-	if err != nil {
-		panic(err)
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(data); err != nil {
+		log.Fatalf("Error encoding JSON: %v", err)
 	}
-	line = []string{"dnssec_ok", strconv.Itoa(dnssecOk)}
-	err = writer.Write(line)
-	if err != nil {
-		panic(err)
-	}
-	defer writer.Flush()
 }
+
 func saveCountDNSSECerrors(runId int, ts string, db *sql.DB) {
 	denialProof, dnskeyValidation, dsValidation := dbController.CountDomainsWithDNSSECErrors(runId, db)
-	filename := "csvs/" + strconv.Itoa(runId) + "CountDomainsWithDNSSECErrors" + ts + ".csv"
+	filename := fmt.Sprintf("%s/%d_CountDomainsWithDNSSECerrors_%s.json", jsonsFolder, runId, ts)
 	file, err := os.Create(filename)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error creating JSON file: %v", err)
 	}
 	defer file.Close()
-	writer := csv.NewWriter(file)
-	writer.Write([]string{"failiure", "domains"})
-	writer.Write([]string{"Negación de Existencia", strconv.Itoa(denialProof)})
-	writer.Write([]string{"Validación de llaves", strconv.Itoa(dnskeyValidation)})
-	writer.Write([]string{"Validación de DS", strconv.Itoa(dsValidation)})
-	defer writer.Flush()
+
+	data := []map[string]interface{}{
+		{"failure": "Negación de Existencia", "domains": denialProof},
+		{"failure": "Validación de llaves", "domains": dnskeyValidation},
+		{"failure": "Validación de DS", "domains": dsValidation},
+	}
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(data); err != nil {
+		log.Fatalf("Error encoding JSON: %v", err)
+	}
 }
+
 func saveCountNameserverCharacteristics(runId int, ts string, db *sql.DB) {
 	recursivity, noRecursivity, edns, noEdns, tcp, noTcp, zoneTransfer, noZoneTransfer, locQuery, noLocQuery := dbController.CountNameserverCharacteristics(runId, db)
-	filename := "csvs/" + strconv.Itoa(runId) + "CountNameserverCharacteristics" + ts + ".csv"
+	filename := fmt.Sprintf("%s/%d_CountNameserverCharacteristics_%s.json", jsonsFolder, runId, ts)
 	file, err := os.Create(filename)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error creating JSON file: %v", err)
 	}
 	defer file.Close()
 	/*categoria, cantidad de dominios "si", cantidad dominios "no"
@@ -464,14 +469,19 @@ func saveCountNameserverCharacteristics(runId int, ts string, db *sql.DB) {
 	no permite comunicación tcp, 500, 500
 	permite transferir la zona, 100, 900
 	*/
-	writer := csv.NewWriter(file)
-	writer.Write([]string{"category", "fail", "fulfill"})
-	writer.Write([]string{"Permite Recursividad", strconv.Itoa(recursivity), strconv.Itoa(noRecursivity)})
-	writer.Write([]string{"EDNS activado", strconv.Itoa(noEdns), strconv.Itoa(edns)})
-	writer.Write([]string{"comunicacion TCP", strconv.Itoa(noTcp), strconv.Itoa(tcp)})
-	writer.Write([]string{"Transferencia de zona TCP", strconv.Itoa(zoneTransfer), strconv.Itoa(noZoneTransfer)})
-	writer.Write([]string{"Respuesta a consultas LOC", strconv.Itoa(locQuery), strconv.Itoa(noLocQuery)})
-	defer writer.Flush()
+	data := []map[string]interface{}{
+		{"category": "Permite Recursividad", "fail": noRecursivity, "fulfill": recursivity},
+		{"category": "EDNS activado", "fail": noEdns, "fulfill": edns},
+		{"category": "comunicacion TCP", "fail": noTcp, "fulfill": tcp},
+		{"category": "Transferencia de zona TCP", "fail": noZoneTransfer, "fulfill": zoneTransfer},
+		{"category": "Respuesta a consultas LOC", "fail": noLocQuery, "fulfill": locQuery},
+	}
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(data); err != nil {
+		log.Fatalf("Error encoding JSON: %v", err)
+	}
 }
 
 /*DNSSEC zone*/
@@ -612,38 +622,47 @@ func CheckNSEC3s(domainId int, db *sql.DB) (nsec3Found bool, nsec3Ok bool, wildc
 }
 
 func saveNSs(runId int, db *sql.DB) {
-	rows, err := dbController.getNSs(runId, db)
+	rows, err := dbController.GetNSs(runId, db)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error retrieving NSs: %v", err)
 	}
 	defer rows.Close()
-	filename := "csvs/" + strconv.Itoa(runId) + "domainNSs.csv"
+
+	filename := fmt.Sprintf("%s/%d_domainNSs.json", jsonsFolder, runId)
 	file, err := os.Create(filename)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error creating JSON file: %v", err)
 	}
 	defer file.Close()
 
-	writer := csv.NewWriter(file)
+	var data []map[string]interface{}
 	columns, err := rows.Columns()
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error getting columns: %v", err)
 	}
-	writer.Write([]string{columns[0], columns[1]})
+
 	for rows.Next() {
-		var family int
-		var num int
-		if err := rows.Scan(&num, &family); err != nil {
-			log.Fatal(err)
+		row := make(map[string]interface{})
+		values := make([]interface{}, len(columns))
+		pointers := make([]interface{}, len(columns))
+		for i := range values {
+			pointers[i] = &values[i]
 		}
-		line := []string{strconv.Itoa(num), strconv.Itoa(family)}
-		err := writer.Write(line)
-		if err != nil {
-			panic(err)
+		if err := rows.Scan(pointers...); err != nil {
+			log.Fatalf("Error scanning row: %v", err)
 		}
+		for i, col := range columns {
+			row[col] = values[i]
+		}
+		data = append(data, row)
 	}
-	defer writer.Flush()
 	if err := rows.Err(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error iterating rows: %v", err)
+	}
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(data); err != nil {
+		log.Fatalf("Error encoding JSON: %v", err)
 	}
 }
