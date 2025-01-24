@@ -3,13 +3,13 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/miekg/dns"
 	"github.com/niclabs/Observatorio/dnsUtils"
-	"golang.org/x/net/idna"
 )
 
 type DNSResult struct {
@@ -20,6 +20,11 @@ type DNSResult struct {
 	RecursivityOff *bool   `json:"recursivity_off,omitempty"`
 	TCP            *bool   `json:"tcp,omitempty"`
 	Error          string  `json:"error,omitempty"`
+}
+
+type DNSResponse struct {
+	Results       []DNSResult `json:"results"`
+	Discrepancies []string    `json:"discrepancies"`
 }
 
 func main() {
@@ -40,32 +45,31 @@ func main() {
 			domain += "."
 		}
 
-		results, err := analyzeDomain(domain)
+		response, err := analyzeDomain(domain)
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 		}
 
 		// Responder con resultados en JSON
-		return c.JSON(results)
+		return c.JSON(response)
 	})
 
-	// Iniciar el servidor en el puerto 8080
-	log.Println("Servidor iniciado en http://localhost:8080")
-	log.Fatal(app.Listen(":8080"))
-	//log.Fatal(app.Listen(":8081"))
+	// Iniciar el servidor en el puerto 8082
+	log.Println("Servidor iniciado en http://localhost:8082")
+	log.Fatal(app.Listen(":8082"))
+	//log.Fatal(app.Listen(":8082"))
 }
 
-func analyzeDomain(domain string) ([]DNSResult, error) {
-	dnsClient := &dns.Client{Timeout: 5 * time.Second}
+func analyzeDomain(domain string) (DNSResponse, error) {
+	dnsClient := &dns.Client{Timeout: 10 * time.Second}
 	dnsServers := []string{"8.8.8.8", "1.1.1.1"} // DNS públicos como respaldo
 
-	// Obtener los servidores NS
+	// Obtener los servidores NS del dominio (zona primaria)
 	msg, _, err := dnsUtils.GetRecordSet(domain, dns.TypeNS, dnsServers, dnsClient)
 	if err != nil {
-		return nil, fmt.Errorf("error al consultar NS: %v", err)
+		return DNSResponse{}, fmt.Errorf("error al consultar NS: %v", err)
 	}
 
-	// Almacenar los servidores NS
 	var nsServers []string
 	for _, answer := range msg.Answer {
 		if ns, ok := answer.(*dns.NS); ok {
@@ -74,9 +78,40 @@ func analyzeDomain(domain string) ([]DNSResult, error) {
 	}
 
 	if len(nsServers) == 0 {
-		return nil, fmt.Errorf("No se encontraron servidores NS para el dominio %s", domain)
+		return DNSResponse{}, fmt.Errorf("No se encontraron servidores NS para el dominio %s", domain)
 	}
 
+	// Obtener los servidores NS del servidor padre
+	parentNS, err := getParentNS(domain)
+	if err != nil {
+		return DNSResponse{}, fmt.Errorf("error al consultar el servidor padre: %v", err)
+	}
+
+	// Comparar las listas: zona primaria vs servidor padre
+	missingInZone := []string{} // Servidores en el padre, pero no en la zona primaria
+
+	zoneNSSet := make(map[string]bool)
+	for _, ns := range nsServers {
+		zoneNSSet[ns] = true
+	}
+
+	for _, ns := range parentNS {
+		if !zoneNSSet[ns] {
+			missingInZone = append(missingInZone, ns)
+		}
+	}
+
+	// Generar advertencias solo para servidores del servidor padre no presentes en la zona primaria
+	var discrepancies []string
+	for _, ns := range missingInZone {
+		discrepancies = append(discrepancies, ns)
+	}
+
+	if len(discrepancies) == 0 {
+		discrepancies = append(discrepancies, "Sin errores")
+	}
+
+	// Continuar con el análisis adicional (SOA, TCP, etc.)
 	serials := make(map[string]*uint32)
 	var results []DNSResult
 
@@ -137,6 +172,9 @@ func analyzeDomain(domain string) ([]DNSResult, error) {
 		results = append(results, result)
 	}
 
+	// fmt.Println("Servidores NS en la zona primaria:", nsServers)
+	// fmt.Println("Servidores NS en el servidor padre:", parentNS)
+
 	// Validar sincronización de seriales
 	referenceSerial := getReferenceSerial(serials)
 	for i := range results {
@@ -144,14 +182,23 @@ func analyzeDomain(domain string) ([]DNSResult, error) {
 			serialSync := *results[i].Serial == *referenceSerial
 			results[i].SerialSync = &serialSync
 		}
-
-		unicodeName, err := idna.ToUnicode(results[i].Server)
-		if err == nil {
-			results[i].Server = unicodeName
-		}
 	}
 
-	return results, nil
+	// Devolver resultados
+	return DNSResponse{
+		Results:       results,
+		Discrepancies: discrepancies,
+	}, nil
+}
+
+// contains verifica si un elemento está en una lista
+func contains(list []string, item string) bool {
+	for _, v := range list {
+		if v == item {
+			return true
+		}
+	}
+	return false
 }
 
 func checkTCP(domain string, server string) bool {
@@ -188,4 +235,95 @@ func getReferenceSerial(serials map[string]*uint32) *uint32 {
 		return serial // Usar el primer serial como referencia
 	}
 	return nil
+}
+
+func getParentNS(domain string) ([]string, error) {
+	dnsClient := &dns.Client{Timeout: 10 * time.Second}
+	rootServers := []string{"198.41.0.4", "199.9.14.201", "192.33.4.12", "199.7.91.13", "192.203.230.10"} // Ejemplo de servidores raíz
+
+	// Asegurar que el dominio sea un FQDN
+	if !strings.HasSuffix(domain, ".") {
+		domain += "."
+	}
+
+	// Paso 1: Consultar los servidores autoritativos para el TLD
+	parts := strings.Split(domain, ".")
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("dominio inválido")
+	}
+	tld := parts[len(parts)-2] // El penúltimo elemento es el TLD
+
+	msg := new(dns.Msg)
+	msg.SetQuestion(dns.Fqdn(tld+"."), dns.TypeNS)
+
+	var tldServers []string
+	for _, rootServer := range rootServers {
+		// fmt.Println("Consultando el servidor raíz:", rootServer)
+		resp, _, err := dnsClient.Exchange(msg, rootServer+":53")
+		if err != nil {
+			fmt.Printf("Error consultando el servidor raíz %s: %v\n", rootServer, err)
+			continue
+		}
+
+		// Extraer servidores TLD de la sección Ns
+		for _, answer := range resp.Ns {
+			if ns, ok := answer.(*dns.NS); ok {
+				tldServers = append(tldServers, strings.TrimSuffix(ns.Ns, "."))
+			}
+		}
+
+		if len(tldServers) > 0 {
+			break
+		}
+	}
+
+	if len(tldServers) == 0 {
+		return nil, fmt.Errorf("no se encontraron servidores TLD para el TLD %s", tld)
+	}
+	// fmt.Println("Servidores TLD obtenidos:", tldServers)
+
+	// Paso 2: Consultar los servidores TLD para obtener los NS del dominio
+	msg.SetQuestion(dns.Fqdn(domain), dns.TypeNS)
+
+	var parentNS []string
+	for _, tldServer := range tldServers {
+		// fmt.Println("Consultando el servidor TLD:", tldServer)
+		resp, _, err := dnsClient.Exchange(msg, tldServer+":53")
+		if err != nil {
+			fmt.Printf("Error consultando el servidor TLD %s: %v\n", tldServer, err)
+			continue
+		}
+
+		// Extraer servidores NS del dominio de la sección Authority
+		for _, answer := range resp.Ns {
+			if ns, ok := answer.(*dns.NS); ok {
+				parentNS = append(parentNS, strings.TrimSuffix(ns.Ns, "."))
+			}
+		}
+
+		if len(parentNS) > 0 {
+			break
+		}
+	}
+
+	if len(parentNS) == 0 {
+		return nil, fmt.Errorf("no se pudieron obtener los servidores NS del servidor padre para el dominio %s", domain)
+	}
+	// fmt.Println("Servidores NS del servidor padre obtenidos:", parentNS)
+	return parentNS, nil
+}
+
+// Resolver las direcciones IP de los servidores TLD
+func resolveServerIPs(servers []string) []string {
+	var ips []string
+	for _, server := range servers {
+		fmt.Println("Resolviendo IP para:", server)
+		addrs, err := net.LookupHost(server)
+		if err != nil {
+			fmt.Printf("Error resolviendo %s: %v\n", server, err)
+			continue
+		}
+		ips = append(ips, addrs[0]) // Usar la primera dirección IP
+	}
+	return ips
 }
