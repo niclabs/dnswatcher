@@ -3,10 +3,11 @@ package dbController
 import (
 	"database/sql"
 	"fmt"
-	"github.com/miekg/dns"
 	"log"
 	"strings"
 	"time"
+
+	"github.com/miekg/dns"
 )
 
 func CreateTables(db *sql.DB, drop bool) {
@@ -66,14 +67,20 @@ func CreateTables(db *sql.DB, drop bool) {
 		fmt.Println("OpenConnections", db.Stats())
 		panic(err)
 	}
-
 	DropTable("ds", db, drop)
-
 	_, err = db.Exec("CREATE TABLE IF NOT EXISTS ds ( id SERIAL PRIMARY KEY, run_id integer REFERENCES runs(id), domain_id integer REFERENCES domain(id), algorithm int, hashed_name varchar(253) , key_tag integer, digest_type integer, digest varchar(255), ds_ok bool)")
 	if err != nil {
 		fmt.Println("OpenConnections", db.Stats())
 		panic(err)
 	}
+	// Creamos tabla para almacenar metricas de disponibilidad por transporte y dirección
+	DropTable("availability_metrics", db, drop)
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS availability_metrics ( id SERIAL PRIMARY KEY, run_id integer REFERENCES runs(id), address VARCHAR(10), transport VARCHAR(10), duration FLOAT, correct bool, success_count INTEGER, total_count INTEGER, availability FLOAT)")
+	if err != nil {
+		fmt.Println("OpenConnections", db.Stats())
+		panic(err)
+	}
+
 }
 func DropTable(table string, db *sql.DB, drop bool) {
 	if drop {
@@ -132,6 +139,24 @@ func SaveDNSKEY(dnskey *dns.DNSKEY, dsok bool, domainId int, runId int, db *sql.
 		fmt.Println("OpenConnections", db.Stats(), " DomainId: ", domainId)
 		panic(err)
 	}
+}
+
+// Guarda los resultados de la consulta en la tabla nueva availability_metrics
+func SaveAvailabilityResults(runId int, availability_result AvailabilityResult, db *sql.DB) {
+	_, err := db.Exec("INSERT INTO availability_metrics (run_id, address, transport, duration, correct) VALUES ($1, $2, $3, $4, $5)", availability_result.RunID, availability_result.TypeAddress, availability_result.Transport, availability_result.Duration, availability_result.Correct)
+	if err != nil {
+		fmt.Println("Error al guardar el resultado de disponibilidad:", err)
+	}
+}
+
+// Estructura para resultados de disponibilidad
+type AvailabilityResult struct {
+	RunID       int
+	Server      string
+	Transport   string  // "UDP" o "TCP"
+	TypeAddress string  // Dirección IP
+	Duration    float64 // Duración de la consulta
+	Correct     bool
 }
 
 type DNSKEY struct {
@@ -401,6 +426,12 @@ func CountDomainsWithCountNSIPExclusive(runId int, db *sql.DB) (*sql.Rows, error
 		"((select * from nameserver where run_id=$1) as nameserver1 left "+
 		"JOIN (SELECT nameserver_id, COUNT(ip) AS ipCount, SUM(CASE family(ip) WHEN 4 THEN 1 ELSE 0 END) AS ipv4Count, SUM(CASE family(ip) WHEN 6 THEN 1 ELSE 0 END) AS ipv6Count FROM (select * from nameserver_ip where run_id=$1) as nameserver_ip GROUP BY(nameserver_id)) AS IPC "+
 		"ON nameserver1.id=IPC.nameserver_id) GROUP BY domain_id)AS CDN GROUP BY ipsCount, ipsv4Count, ipsv6Count ORDER BY ipsCount, ipsv4Count, ipsv6Count) AS familyCount)as groupFamily GROUP BY family;", runId)
+	return rows, err
+}
+
+// Cuenta respuestas exitosas y timeouts
+func CountAvailabilityResults(runId int, db *sql.DB) (*sql.Rows, error) {
+	rows, err := db.Query("SELECT address, transport, SUM(CASE WHEN correct THEN 1 ELSE 0 END) AS correct_count, SUM(CASE WHEN NOT correct THEN 1 ELSE 0 END) AS timeout_count FROM availability_metrics WHERE run_id = $1 GROUP BY address, transport ORDER BY address, transport", runId)
 	return rows, err
 }
 func GetRunTimestamp(runId int, db *sql.DB) string {

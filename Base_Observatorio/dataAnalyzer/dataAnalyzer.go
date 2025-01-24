@@ -122,9 +122,9 @@ func CheckDomainInfo(domainId int, db *sql.DB) {
 /*global statistics*/
 func getGlobalStatistics(runId int, ts string, db *sql.DB) {
 	initjsonFolder()
-	saveDispersion(runId, ts, db)
-	saveDNSSEC(runId, ts, db)
-	saveCountNameserverCharacteristics(runId, ts, db)
+	saveDispersion(runId, ts, db)                     // aqui estan 7 de los json
+	saveDNSSEC(runId, ts, db)                         //9 y 10
+	saveCountNameserverCharacteristics(runId, ts, db) // 8
 	saveJsonRecomendations(runId, ts)
 }
 
@@ -147,6 +147,8 @@ func initjsonFolder() {
 
 /*Nameserver characteristics*/
 /*Dispersion*/
+// es cm guardarlo a json creo
+// agregué el de disponibilidad
 func saveDispersion(runId int, ts string, db *sql.DB) {
 	saveCountNSPerDomain(runId, ts, db)
 	saveCountASNPerDomain(runId, ts, db)
@@ -155,6 +157,54 @@ func saveDispersion(runId int, ts string, db *sql.DB) {
 	saveCountNSIPv4IPv6(runId, ts, db)
 	saveCountDomainsWithCountNSIPs(runId, ts, db)
 	saveCountDomainsWithCountNSIPExclusive(runId, ts, db)
+	saveAvailabilityResults(runId, ts, db)
+}
+
+// Obtiene los resultados de disponibilidad y los guarda en formato json
+func saveAvailabilityResults(runId int, ts string, db *sql.DB) {
+	rows, err := dbController.CountAvailabilityResults(runId, db)
+	if err != nil {
+		panic(err) //error
+	}
+	defer rows.Close()
+
+	filename := fmt.Sprintf("%s/%d_CountAvailabilityResults_%s.json", jsonsFolder, runId, ts)
+	file, err := os.Create(filename)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+
+	data := []map[string]interface{}{}
+	columns, err := rows.Columns()
+	if err != nil {
+		panic(err)
+	}
+
+	for rows.Next() {
+		row := make(map[string]interface{})
+		values := make([]interface{}, len(columns))
+		pointers := make([]interface{}, len(columns))
+		for i := range values {
+			pointers[i] = &values[i]
+		}
+		if err := rows.Scan(pointers...); err != nil {
+			log.Fatal(err)
+		}
+		for i, col := range columns {
+			row[col] = values[i]
+		}
+		data = append(data, row)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatal(err)
+	}
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(data); err != nil {
+		panic(err)
+	}
 }
 
 func saveCountDomainsWithCountNSIPExclusive(runId int, ts string, db *sql.DB) {
