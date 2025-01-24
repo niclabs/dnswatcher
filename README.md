@@ -1,59 +1,113 @@
-# DNS Diagnóstico
 
-Software desarrollado para realizar diagnósticos DNS sobre dominios, evaluando sincronía de registros SOA, autoridad, recursividad deshabilitada, soporte TCP y delegación. Los resultados se presentan en consola y se almacenan en un archivo JSON.
+# Repositorio Común: DNSwatcher
 
----
+Este repositorio contiene dos proyectos principales relacionados con el diagnóstico y análisis de dominios DNS:
 
-## **Pre-instalación**
+1. **DNSwatcher**: Intersección entre buenas prácticas para root zone, zonemaster y observatorio DNS para caracterizar los dominios.  
 
-### **Requisitos**
-1. **Go**:
-   - Instale Go siguiendo las instrucciones en [https://golang.org/doc/install](https://golang.org/doc/install).
-   - Configure las variables de entorno `$GOROOT` y `$GOPATH`.
+2. **DrDNS**: Herramienta para diagnósticos DNS mediante una API REST. Permite evaluar sincronía de registros SOA, autoridad, recursividad deshabilitada, soporte TCP y delegación de dominios.
 
-2. **Dependencias de Go**:
-   Inicialice un módulo de Go:
-   ```bash
-   go mod init dnswatcher
-   ```
-
-   Instale las siguientes librerías de Go:
-   ```bash
-   go get github.com/miekg/dns
-   go get github.com/niclabs/Observatorio/dnsUtils
-   go get golang.org/x/net/idna
-   ```
 
 ---
 
-## Instalación
-Clone este repositorio:
+## 1. Pre-instalación
+
+Antes de comenzar, asegúrese de cumplir con los siguientes requisitos:
+
+### Requisitos generales
+
+- **Go**:
+  - Descargue e instale Go desde [https://golang.org/doc/install](https://golang.org/doc/install).
+  - Configure las variables de entorno `$GOROOT` y `$GOPATH`.
+
+- **Docker**:
+  - Se recomienda usar Docker para un entorno aislado y facilitar la configuración.
+
+- **PostgreSQL** (necesario para Observatorio):
+  - Instale PostgreSQL en su sistema y cree una base de datos. Instrucciones detalladas disponibles en `Base_Obs/README.md`.
+
+- **Geolite** (necesario para Observatorio):
+  - Obtenga una licencia gratuita de Geolite desde [MaxMind](https://www.maxmind.com/en/geolite2/signup).
+
+---
+
+## 2. Instalación
+
+### Clonar el repositorio
+
 ```bash
-git clone <https://github.com/niclabs/dnswatcher.git>
+git clone https://github.com/niclabs/dnswatcher.git
+cd dnswatcher
 ```
 
-Entre al directorio:
-```bash
-cd <dnswatcher>
-```
+### Configuración de cada proyecto
+
+1. **DrDNS**:
+  
+   - Entrar a la carpeta DrDNS y configurar el módulo de go con las respectivas librerias. Para mayor información, revisar el archivo `DrDNS/README.md` para configurar y ejecutar la API REST.
+
+2. **Observatorio**:
+   - Configure los archivos necesarios como `config.yml`. Para mayor información, revisar el archivo `Base_Obs/README.md`.
 
 ---
 
-## Uso
+## 3. Uso
 
-Ejecute el programa proporcionando un dominio como argumento:
-```bash
-go run maindns.go <dominio> (xxxxx.cl)
-```
+### DrDNS
 
-### **Salida esperada**
-1. El diagnóstico se imprimirá en consola.
-2. Un archivo JSON con los resultados se guardará en la carpeta `JSONS` (se creará automáticamente si no existe).
+- Inicie el servidor:
+
+  ```bash
+  ./main_drdns
+  ```
+
+  Esto lanzará un servidor REST en el puerto `8080`. Puede cambiar el puerto modificando el archivo fuente.
+
+- Realice una solicitud de diagnóstico:
+
+  ```bash
+  curl http://localhost:8080/DrDNS/example.com
+  ```
+
+  Esto devolverá un JSON con la información del diagnóstico.
+
+### Observatorio
+
+- Ejecute el contenedor Docker:
+
+  ```bash
+  docker run observatorio
+  ```
+
+  Esto recolectará datos DNS y generará archivos en formato `CSV` y `JSON` en la carpeta `csvs`.
+
+- Para extraer los archivos generados:
+
+  ```bash
+  docker cp <containerID>:/Observatorio/csvs/ ./csvs
+  ```
 
 ---
 
-## Acknowledgments:
+## 4. Licencia
 
-Observatorio:
-@maitegm
-@madestro
+Este proyecto está bajo la licencia [MIT](https://opensource.org/licenses/MIT). Consulte el archivo `LICENSE` para más detalles.
+
+---
+
+## 5. Notas adicionales
+
+- **No suba información sensible** al repositorio, como contraseñas, nombres de bases de datos o archivos grandes de datos.
+- Asegúrese de agregar los archivos de configuración sensibles (por ejemplo, `config.yml`) al archivo `.gitignore`.
+
+Para más detalles sobre cada proyecto, consulte los archivos `README.md` dentro de las carpetas `DrDNS/` y `Base_Obs/`.
+
+
+## **Contribuciones y Reconocimientos**
+
+Este proyecto fue desarrollado basado en el proyecto 'Observatorio'.
+
+Agradecimientos especiales a:
+
+- @maitegm
+- @madestro
