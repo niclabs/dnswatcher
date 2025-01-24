@@ -122,9 +122,9 @@ func CheckDomainInfo(domainId int, db *sql.DB) {
 /*global statistics*/
 func getGlobalStatistics(runId int, ts string, db *sql.DB) {
 	initjsonFolder()
-	saveDispersion(runId, ts, db)                     // aqui estan 7 de los json
-	saveDNSSEC(runId, ts, db)                         //9 y 10
-	saveCountNameserverCharacteristics(runId, ts, db) // 8
+	saveDispersion(runId, ts, db)
+	saveDNSSEC(runId, ts, db)
+	saveCountNameserverCharacteristics(runId, ts, db)
 	saveJsonRecomendations(runId, ts)
 }
 
@@ -147,8 +147,7 @@ func initjsonFolder() {
 
 /*Nameserver characteristics*/
 /*Dispersion*/
-// es cm guardarlo a json creo
-// agregué el de disponibilidad
+// Se agrega funcion para obtener resultados de la disponibilidad
 func saveDispersion(runId int, ts string, db *sql.DB) {
 	saveCountNSPerDomain(runId, ts, db)
 	saveCountASNPerDomain(runId, ts, db)

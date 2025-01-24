@@ -776,7 +776,6 @@ func collectSingleDomainInfo(domainName string, runId int, db *sql.DB) {
 							zoneTransfer = checkZoneTransfer(domainName, ns.Ns)
 							// Wrong Queries (tipos extraños como loc)
 							locQuery = checkLOCQuery(domainName, ns.Ns)
-							// check availability
 						}
 						dbController.SaveNS(recursivity, EDNS, TCP, zoneTransfer, locQuery, nameserverId, db)
 					}
@@ -799,7 +798,7 @@ func collectSingleDomainInfo(domainName string, runId int, db *sql.DB) {
 
 }
 
-// Manda la consulta SOA para cada IP con ambos protocolos
+// Invoca a la consulta SOA para cada IP con ambos protocolos
 func collectAvailabilityData(runId int, db *sql.DB) {
 	for _, server := range rootServers {
 		for _, protocol := range []string{"udp", "tcp"} {
@@ -849,7 +848,7 @@ func collectAvailabilityData(runId int, db *sql.DB) {
 	}
 }
 
-// thisss collects data
+// Manda la consulta SOA
 func querySOA(server string, protocol string, c *dns.Client) (bool, float64) {
 	// Configurar el timeout
 	c.Timeout = 4 * time.Second
