@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors" // Importar el middleware CORS
 	"github.com/miekg/dns"
 	"github.com/niclabs/Observatorio/dnsUtils"
 	"golang.org/x/net/idna"
@@ -31,6 +32,12 @@ type DNSResponse struct {
 
 func main() {
 	app := fiber.New()
+
+	// Configuración de CORS
+	app.Use(cors.New(cors.Config{
+		AllowOrigins: "*",             // Lista de URLs permitidas, escribir el dominio en forma http://example.cl y separados por una coma, por ejemplo "http://example.com, http://localhost:8082"
+		AllowMethods: "GET,POST,HEAD", // Métodos permitidos
+	}))
 
 	// Middleware para registrar solicitudes
 	app.Use(func(c *fiber.Ctx) error {
@@ -288,8 +295,13 @@ func getReferenceSerial(serials map[string]*uint32) *uint32 {
 }
 
 func getParentNS(domain string) ([]string, error) {
-	dnsClient := &dns.Client{Timeout: 10 * time.Second}
-	rootServers := []string{"198.41.0.4", "199.9.14.201", "192.33.4.12", "199.7.91.13", "192.203.230.10"} // Ejemplo de servidores raíz
+	dnsClient := &dns.Client{Timeout: 20 * time.Second}
+	rootServers := []string{
+		"1.1.1.1",    // Cloudflare
+		"8.8.8.8",    // Google
+		"9.9.9.9",    // Quad9
+		"198.41.0.4", // Root Server
+	}
 
 	// Asegurar que el dominio sea un FQDN
 	if !strings.HasSuffix(domain, ".") {

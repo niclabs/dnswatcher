@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test CORS</title>
+</head>
+<body>
+    <button id="test">Probar CORS</button>
+    <p id="result"></p>
+
+    <script>
+        document.getElementById('test').addEventListener('click', async () => {
+            try {
+                const response = await fetch('http://localhost:8082/DrDNS/mercurioantofagasta.cl', {
+                    method: 'GET',
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                document.getElementById('result').textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('result').textContent = `Error: ${error.message}`;
+            }
+        });
+    </script>
+</body>
+</html>
