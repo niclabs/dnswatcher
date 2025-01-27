@@ -1,3 +1,4 @@
+
 # Repositorio Común: DNSwatcher
 
 Este repositorio contiene dos proyectos principales relacionados con el diagnóstico y análisis de dominios DNS:
