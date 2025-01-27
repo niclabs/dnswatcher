@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/miekg/dns"
 	"github.com/niclabs/Observatorio/dnsUtils"
+	"golang.org/x/net/idna"
 )
 
 type DNSResult struct {
@@ -40,14 +42,45 @@ func main() {
 	app.Get("/DrDNS/:domain", func(c *fiber.Ctx) error {
 		domain := c.Params("domain")
 
-		// Verificar formato correcto
-		if !strings.HasSuffix(domain, ".") {
-			domain += "."
+		// Decodificar el dominio si está en formato URL-encoded
+		decodedDomain, err := url.QueryUnescape(domain)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": fmt.Sprintf("Error al decodificar el dominio: %v", err),
+			})
 		}
 
-		response, err := analyzeDomain(domain)
+		// Convertir el dominio a ACE (formato ASCII Compatible Encoding)
+		punycode := idna.New()
+		aceDomain, err := punycode.ToASCII(decodedDomain)
 		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": fmt.Sprintf("Error al convertir el dominio a ACE: %v", err),
+			})
+		}
+
+		// Verificar formato correcto (FQDN)
+		if !strings.HasSuffix(aceDomain, ".") {
+			aceDomain += "."
+		}
+
+		response, err := analyzeDomain(aceDomain)
+		if err != nil {
+			// Manejar errores específicos
+			if strings.Contains(err.Error(), "No se encontraron servidores NS") {
+				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+					"error": err.Error(),
+				})
+			}
+			if strings.Contains(err.Error(), "dominio inválido") {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error": err.Error(),
+				})
+			}
+			// Errores internos
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": err.Error(),
+			})
 		}
 
 		// Responder con resultados en JSON
@@ -57,15 +90,26 @@ func main() {
 	// Iniciar el servidor en el puerto 8082
 	log.Println("Servidor iniciado en http://localhost:8082")
 	log.Fatal(app.Listen(":8082"))
-	//log.Fatal(app.Listen(":8082"))
 }
 
 func analyzeDomain(domain string) (DNSResponse, error) {
-	dnsClient := &dns.Client{Timeout: 10 * time.Second}
+	// Validar que el dominio sea válido
+	if len(domain) < 3 || !strings.Contains(domain, ".") {
+		return DNSResponse{}, fmt.Errorf("dominio inválido: %s", domain)
+	}
+
+	// Convertir el dominio a ACE (formato ASCII)
+	punycode := idna.New()
+	aceDomain, err := punycode.ToASCII(domain)
+	if err != nil {
+		return DNSResponse{}, fmt.Errorf("error al convertir el dominio a ACE: %v", err)
+	}
+
+	dnsClient := &dns.Client{Timeout: 20 * time.Second}
 	dnsServers := []string{"8.8.8.8", "1.1.1.1"} // DNS públicos como respaldo
 
 	// Obtener los servidores NS del dominio (zona primaria)
-	msg, _, err := dnsUtils.GetRecordSet(domain, dns.TypeNS, dnsServers, dnsClient)
+	msg, _, err := dnsUtils.GetRecordSet(aceDomain, dns.TypeNS, dnsServers, dnsClient)
 	if err != nil {
 		return DNSResponse{}, fmt.Errorf("error al consultar NS: %v", err)
 	}
@@ -81,8 +125,8 @@ func analyzeDomain(domain string) (DNSResponse, error) {
 		return DNSResponse{}, fmt.Errorf("No se encontraron servidores NS para el dominio %s", domain)
 	}
 
-	// Obtener los servidores NS del servidor padre
-	parentNS, err := getParentNS(domain)
+	// Llamar a getParentNS con el dominio en formato ACE
+	parentNS, err := getParentNS(aceDomain)
 	if err != nil {
 		return DNSResponse{}, fmt.Errorf("error al consultar el servidor padre: %v", err)
 	}
@@ -202,12 +246,18 @@ func contains(list []string, item string) bool {
 }
 
 func checkTCP(domain string, server string) bool {
+	punycode := idna.New()
+	aceDomain, err := punycode.ToASCII(domain)
+	if err != nil {
+		log.Printf("Error al convertir dominio a ACE: %v\n", err)
+		return false
+	}
+
 	client := &dns.Client{Timeout: 5 * time.Second, Net: "tcp"}
-
 	msg := new(dns.Msg)
-	msg.SetQuestion(domain, dns.TypeSOA)
+	msg.SetQuestion(aceDomain, dns.TypeSOA)
 
-	_, _, err := client.Exchange(msg, server+":53")
+	_, _, err = client.Exchange(msg, server+":53")
 	if err != nil {
 		return false
 	}
