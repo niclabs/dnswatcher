@@ -16,18 +16,19 @@ import (
 )
 
 type DNSResult struct {
-	Server         string  `json:"server"`
-	Serial         *uint32 `json:"serial,omitempty"`
-	SerialSync     *bool   `json:"serial_sync,omitempty"`
-	Authority      *bool   `json:"authority,omitempty"`
-	RecursivityOff *bool   `json:"recursivity_off,omitempty"`
-	TCP            *bool   `json:"tcp,omitempty"`
-	Error          string  `json:"error,omitempty"`
+	Server          string  `json:"server"`
+	Serial          *uint32 `json:"serial,omitempty"`
+	SerialReference *uint32 `json:"serial_reference,omitempty"`
+	SerialSync      *bool   `json:"serial_sync,omitempty"`
+	Authority       *bool   `json:"authority,omitempty"`
+	RecursivityOff  *bool   `json:"recursivity_off,omitempty"`
+	TCP             *bool   `json:"tcp,omitempty"`
+	Error           string  `json:"error,omitempty"`
 }
 
 type DNSResponse struct {
-	Results       []DNSResult `json:"results"`
-	Discrepancies []string    `json:"discrepancies"`
+	Results              []DNSResult          `json:"results"`
+	DelegationDiagnosis  map[string]interface{} `json:"delegation_diagnosis"`
 }
 
 func main() {
@@ -140,7 +141,6 @@ func analyzeDomain(domain string) (DNSResponse, error) {
 
 	// Comparar las listas: zona primaria vs servidor padre
 	missingInZone := []string{} // Servidores en el padre, pero no en la zona primaria
-
 	zoneNSSet := make(map[string]bool)
 	for _, ns := range nsServers {
 		zoneNSSet[ns] = true
@@ -153,13 +153,14 @@ func analyzeDomain(domain string) (DNSResponse, error) {
 	}
 
 	// Generar advertencias solo para servidores del servidor padre no presentes en la zona primaria
-	var discrepancies []string
-	for _, ns := range missingInZone {
-		discrepancies = append(discrepancies, ns)
-	}
-
-	if len(discrepancies) == 0 {
-		discrepancies = append(discrepancies, "Sin errores")
+	delegationDiagnosis := make(map[string]interface{})
+	if len(missingInZone) > 0 {
+		delegationDiagnosis["status"] = "warning"
+		delegationDiagnosis["message"] = fmt.Sprintf("Servidor de nombres %s presente en la zona padre, pero no en la lista de NS en el primario", strings.Join(missingInZone, ", "))
+		delegationDiagnosis["missing_nameservers"] = missingInZone
+	} else {
+		delegationDiagnosis["status"] = "ok"
+		delegationDiagnosis["message"] = "No se encontraron discrepancias en la delegación."
 	}
 
 	// Continuar con el análisis adicional (SOA, TCP, etc.)
@@ -176,27 +177,22 @@ func analyzeDomain(domain string) (DNSResponse, error) {
 			result.Error = "NS no verificable: query timed out"
 			hasCriticalError = true
 		} else {
-			if soaMsg.Rcode == dns.RcodeServerFailure {
-				result.Error = "NS no verificable: SERVFAIL"
-				hasCriticalError = true
+			var serial uint32
+			var authoritative bool
+			serialFound := false
+			for _, answer := range soaMsg.Answer {
+				if soa, ok := answer.(*dns.SOA); ok {
+					serial = soa.Serial
+					authoritative = soaMsg.Authoritative
+					serialFound = true
+				}
+			}
+			if serialFound {
+				serials[ns] = &serial
+				result.Serial = &serial
+				result.Authority = &authoritative
 			} else {
-				var serial uint32
-				var authoritative bool
-				serialFound := false
-				for _, answer := range soaMsg.Answer {
-					if soa, ok := answer.(*dns.SOA); ok {
-						serial = soa.Serial
-						authoritative = soaMsg.Authoritative
-						serialFound = true
-					}
-				}
-				if serialFound {
-					serials[ns] = &serial
-					result.Serial = &serial
-					result.Authority = &authoritative
-				} else {
-					hasCriticalError = true
-				}
+				hasCriticalError = true
 			}
 		}
 
@@ -205,7 +201,6 @@ func analyzeDomain(domain string) (DNSResponse, error) {
 			recursivity, _ := checkRecursivityAndEDNS(domain, ns)
 			recursivityOff := !recursivity
 			result.RecursivityOff = &recursivityOff
-
 			// Verificar soporte TCP
 			tcpSupport := checkTCP(domain, ns)
 			result.TCP = &tcpSupport
@@ -229,18 +224,20 @@ func analyzeDomain(domain string) (DNSResponse, error) {
 	// Validar sincronización de seriales
 	referenceSerial := getReferenceSerial(serials)
 	for i := range results {
-		if results[i].Serial != nil { // Solo comparamos seriales si el servidor tiene uno válido
+		if results[i].Serial != nil {
 			serialSync := *results[i].Serial == *referenceSerial
 			results[i].SerialSync = &serialSync
+			results[i].SerialReference = referenceSerial
 		}
 	}
 
 	// Devolver resultados
 	return DNSResponse{
 		Results:       results,
-		Discrepancies: discrepancies,
+		DelegationDiagnosis: delegationDiagnosis,
 	}, nil
 }
+
 
 // contains verifica si un elemento está en una lista
 func contains(list []string, item string) bool {
@@ -289,10 +286,14 @@ func checkRecursivityAndEDNS(domain string, server string) (bool, bool) {
 
 func getReferenceSerial(serials map[string]*uint32) *uint32 {
 	for _, serial := range serials {
-		return serial // Usar el primer serial como referencia
+		if serial != nil {
+			return serial // primer serial encontrado
+		}
 	}
 	return nil
 }
+
+
 
 func getParentNS(domain string) ([]string, error) {
 	dnsClient := &dns.Client{Timeout: 20 * time.Second}
