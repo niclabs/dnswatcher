@@ -298,10 +298,23 @@ func getReferenceSerial(serials map[string]*uint32) *uint32 {
 func getParentNS(domain string) ([]string, error) {
 	dnsClient := &dns.Client{Timeout: 20 * time.Second}
 	rootServers := []string{
-		"1.1.1.1",    // Cloudflare
-		"8.8.8.8",    // Google
-		"9.9.9.9",    // Quad9
-		"198.41.0.4", // Root Server
+		//"1.1.1.1",    // Cloudflare
+		//"8.8.8.8",    // Google
+		//"9.9.9.9",    // Quad9
+		//"198.41.0.4", // Root Server
+		"a.root-servers.net",
+		"b.root-servers.net",
+		"c.root-servers.net",
+		"d.root-servers.net",
+		"e.root-servers.net",
+		"f.root-servers.net",
+		"g.root-servers.net",
+		"h.root-servers.net",
+		"i.root-servers.net",
+		"j.root-servers.net",
+		"k.root-servers.net",
+		"l.root-servers.net",
+		"m.root-servers.net",
 	}
 
 	// Asegurar que el dominio sea un FQDN
