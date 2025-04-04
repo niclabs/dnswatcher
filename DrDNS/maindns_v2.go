@@ -113,7 +113,7 @@ func analyzeDomain(domain string) (DNSResponse, error) {
 		return DNSResponse{}, fmt.Errorf("error al convertir el dominio a ACE: %v", err)
 	}
 
-	dnsClient := &dns.Client{Timeout: 20 * time.Second}
+	dnsClient := &dns.Client{Timeout: 3 * time.Second}
 	dnsServers := []string{"8.8.8.8", "1.1.1.1"} // DNS públicos como respaldo
 
 	// Obtener los servidores NS del dominio (zona primaria)
@@ -174,9 +174,20 @@ func analyzeDomain(domain string) (DNSResponse, error) {
 		// Verificar SOA
 		soaMsg, _, err := dnsUtils.GetRecordSet(domain, dns.TypeSOA, []string{ns}, dnsClient)
 		if err != nil {
-			result.Error = "NS no verificable: query timed out"
+			result.Error = "NS no verificable: " + err.Error()
+			hasCriticalError = true
+		} else if soaMsg == nil {
+			result.Error = "NS no verificable: respuesta nula"
+			hasCriticalError = true
+		} else if soaMsg.Rcode != dns.RcodeSuccess {
+			rcodeText := dns.RcodeToString[soaMsg.Rcode]
+			if rcodeText == "" {
+				rcodeText = fmt.Sprintf("RCODE %d", soaMsg.Rcode)
+			}
+			result.Error = fmt.Sprintf("NS no verificable: %s", rcodeText)
 			hasCriticalError = true
 		} else {
+			// Procesamiento normal si la respuesta es válida y exitosa
 			var serial uint32
 			var authoritative bool
 			serialFound := false
@@ -187,11 +198,12 @@ func analyzeDomain(domain string) (DNSResponse, error) {
 					serialFound = true
 				}
 			}
-			if serialFound {
+			if serialFound && authoritative {
 				serials[ns] = &serial
 				result.Serial = &serial
 				result.Authority = &authoritative
 			} else {
+				result.Error = "NS no verificable: sin SOA autoritativo"
 				hasCriticalError = true
 			}
 		}
@@ -296,7 +308,7 @@ func getReferenceSerial(serials map[string]*uint32) *uint32 {
 
 
 func getParentNS(domain string) ([]string, error) {
-	dnsClient := &dns.Client{Timeout: 20 * time.Second}
+	dnsClient := &dns.Client{Timeout: 3 * time.Second}
 	rootServers := []string{
 		//"1.1.1.1",    // Cloudflare
 		//"8.8.8.8",    // Google
