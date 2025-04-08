@@ -122,6 +122,21 @@ func analyzeDomain(domain string) (DNSResponse, error) {
 		return DNSResponse{}, fmt.Errorf("error al consultar NS: %v", err)
 	}
 
+	if msg == nil || len(msg.Answer) == 0 {
+		cleanDomain := strings.TrimSuffix(domain, ".")
+
+		switch msg.Rcode {
+		case dns.RcodeNameError:
+			return DNSResponse{}, fmt.Errorf("NXDOMAIN: el dominio %s no existe", cleanDomain)
+		case dns.RcodeServerFailure:
+			return DNSResponse{}, fmt.Errorf("SERVFAIL: el servidor DNS no pudo procesar la solicitud para %s", cleanDomain)
+		case dns.RcodeRefused:
+			return DNSResponse{}, fmt.Errorf("REFUSED: el servidor DNS rechazó la consulta para %s", cleanDomain)
+		default:
+			return DNSResponse{}, fmt.Errorf("No se encontraron servidores NS para el dominio %s (Rcode: %s)", cleanDomain, dns.RcodeToString[msg.Rcode])
+		}
+	}
+
 	var nsServers []string
 	for _, answer := range msg.Answer {
 		if ns, ok := answer.(*dns.NS); ok {
@@ -250,7 +265,6 @@ func analyzeDomain(domain string) (DNSResponse, error) {
 	}, nil
 }
 
-
 // contains verifica si un elemento está en una lista
 func contains(list []string, item string) bool {
 	for _, v := range list {
@@ -304,8 +318,6 @@ func getReferenceSerial(serials map[string]*uint32) *uint32 {
 	}
 	return nil
 }
-
-
 
 func getParentNS(domain string) ([]string, error) {
 	dnsClient := &dns.Client{Timeout: 3 * time.Second}
