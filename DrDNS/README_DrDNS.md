@@ -74,10 +74,10 @@ Ejecutar el server:
 main_drdns.exe
 ```
 
-El servidor quedará disponible en el puerto `8080`. Si este puerto está en uso, se puede modificar la línea:
+El servidor quedará disponible en el puerto `8082`. Si este puerto está en uso, se puede modificar la línea:
 
 ```go
-log.Fatal(app.Listen(":8080"))
+log.Fatal(app.Listen(":8082"))
 ```
 
 A un puerto alternativo como el `8081`
@@ -90,7 +90,7 @@ Realice una petición HTTP GET a la ruta `/DrDNS/{domain}` donde `{domain}` es e
 Ejemplo con `curl`:
 
 ```bash
-curl http://localhost:8080/DrDNS/nic.cl
+curl http://localhost:8082/DrDNS/nic.cl
 ```
 
 O simplemente ingresar la URL en el navegador.
@@ -101,37 +101,51 @@ La respuesta esperada será un JSON con la información correspondiente.
 
 ## **Dockerización**
 
-#### Crear una imagen Docker para el proyecto:
 
-Cree un archivo Dockerfile, se deja un archivo base simple que sirve usando el localhost:
-
-```dockerfile
-FROM golang:1.23.4
-
-WORKDIR /app
-COPY . .
-
-RUN go mod tidy
-RUN go build -o main_drdns maindns_v2.go
-
-EXPOSE 8080
-CMD ["./main_drdns"]
-
-```
-
-Construir el contenedor Docker:
+### 1. Construir el contenedor
 
 ```bash
-docker build -t maindns-service .
-```
-
-Ejecute el contenedor:
-
-```bash
-docker run -p 8080:8080 maindns-service
+docker build -t drdns-service .
 ```
 
 ---
 
+### 2. Ejecutar el contenedor 
 
+```bash
+docker run --name drdns -p 8082:8082 drdns-service
+```
 
+La API quedará disponible en `http://localhost:8082`.
+
+---
+
+### 3. Consultar la API
+
+Se puede realizar una petición de diagnóstico ingresando a:
+
+```
+http://localhost:8082/DrDNS/{dominio}
+```
+
+Ejemplo:
+
+```bash
+curl http://localhost:8082/DrDNS/google.com
+```
+
+---
+
+### 4. Detener o eliminar el contenedor
+
+Para detener se puede presionar `Ctrl+C` en la terminal o :
+
+```bash
+docker stop drdns
+```
+
+Para eliminar:
+
+```bash
+docker rm drdns
+```

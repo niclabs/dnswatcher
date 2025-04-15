@@ -1,0 +1,12 @@
+services:
+  drdns:
+    container_name: drdns
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8082"
+    restart: unless-stopped
+
+
+
