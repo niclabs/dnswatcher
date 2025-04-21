@@ -1,7 +1,8 @@
 *.csv
 *.json
-go.mod 
-go.sum
+*go.mod 
+DrDNS/go.sum
+drdns.pl
 main_drdns
 main_rest
 main_drdns.exe
