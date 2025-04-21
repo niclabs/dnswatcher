@@ -34,3 +34,10 @@ agrimed.cl
 srcei.cl
 udi.cl
 vulcano.cl
+netflix.cl // NS3   TIMEOUT -> CORRESPONDE
+miniso.cl 
+munnich.cl
+irislab.cl
+eastoncenter.cl
+canal9regional.cl
+laradio.cl

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"strconv"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors" // Importar el middleware CORS
 	"github.com/miekg/dns"
@@ -23,12 +25,36 @@ type DNSResult struct {
 	Authority       *bool   `json:"authority,omitempty"`
 	RecursivityOff  *bool   `json:"recursivity_off,omitempty"`
 	TCP             *bool   `json:"tcp,omitempty"`
-	Error           string  `json:"error,omitempty"`
+
+	// POSIBLES NUEVOS CAMPOS
+	NSNotCNAME    *bool       `json:"ns_not_cname,omitempty"`
+	MXExists      *bool       `json:"mx_exists,omitempty"`
+	MXNotCNAME    *bool       `json:"mx_not_cname,omitempty"`
+	WWWNotCNAME   *bool       `json:"www_not_cname,omitempty"`
+	SOAParameters interface{} `json:"soa_parameters,omitempty"`
+
+	Error string `json:"error,omitempty"`
 }
 
 type DNSResponse struct {
-	Results              []DNSResult          `json:"results"`
-	DelegationDiagnosis  map[string]interface{} `json:"delegation_diagnosis"`
+	Results             []DNSResult            `json:"results"`
+	DelegationDiagnosis map[string]interface{} `json:"delegation_diagnosis"`
+}
+
+var rootServers = []string{
+	"a.root-servers.net",
+	"b.root-servers.net",
+	"c.root-servers.net",
+	"d.root-servers.net",
+	"e.root-servers.net",
+	"f.root-servers.net",
+	"g.root-servers.net",
+	"h.root-servers.net",
+	"i.root-servers.net",
+	"j.root-servers.net",
+	"k.root-servers.net",
+	"l.root-servers.net",
+	"m.root-servers.net",
 }
 
 func main() {
@@ -189,7 +215,17 @@ func analyzeDomain(domain string) (DNSResponse, error) {
 		// Verificar SOA
 		soaMsg, _, err := dnsUtils.GetRecordSet(domain, dns.TypeSOA, []string{ns}, dnsClient)
 		if err != nil {
-			result.Error = "NS no verificable: " + err.Error()
+			errMsg := err.Error()
+			switch {
+			case strings.Contains(errMsg, "i/o timeout"):
+				result.Error = "NS no verificable: query timed out"
+			case strings.Contains(errMsg, "no such host"):
+				result.Error = "NS no verificable: host desconocido"
+			case strings.Contains(errMsg, "connection refused"):
+				result.Error = "NS no verificable: conexión rechazada"
+			default:
+				result.Error = "NS no verificable: " + errMsg
+			}
 			hasCriticalError = true
 		} else if soaMsg == nil {
 			result.Error = "NS no verificable: respuesta nula"
@@ -206,20 +242,69 @@ func analyzeDomain(domain string) (DNSResponse, error) {
 			var serial uint32
 			var authoritative bool
 			serialFound := false
+			var soaParsed *dns.SOA
+
 			for _, answer := range soaMsg.Answer {
 				if soa, ok := answer.(*dns.SOA); ok {
 					serial = soa.Serial
+					soaParsed = soa
 					authoritative = soaMsg.Authoritative
 					serialFound = true
 				}
 			}
-			if serialFound && authoritative {
+			if serialFound && authoritative && soaParsed != nil {
 				serials[ns] = &serial
 				result.Serial = &serial
 				result.Authority = &authoritative
+				result.SOAParameters = evaluateSOAParams(soaParsed)
 			} else {
 				result.Error = "NS no verificable: sin SOA autoritativo"
 				hasCriticalError = true
+			}
+		}
+
+		// NEW PARAMS
+		nsNotCNAME, err := validateNSCNAME(ns)
+		if err != nil {
+			result.Error = fmt.Sprintf("Error validando NS CNAME: %v", err)
+			hasCriticalError = true
+		} else {
+			result.NSNotCNAME = &nsNotCNAME
+			if !nsNotCNAME {
+				result.Error = "NS definido como CNAME (incorrecto)"
+				hasCriticalError = true
+			}
+		}
+
+		if !hasCriticalError {
+			hasMX, mxNotCNAME, err := validateMX(domain, ns)
+			if err != nil {
+				result.Error = fmt.Sprintf("Error validando MX: %v", err)
+				hasCriticalError = true
+			} else {
+				result.MXExists = &hasMX
+				result.MXNotCNAME = &mxNotCNAME
+				if hasMX && !mxNotCNAME {
+					result.Error = "MX definido incorrectamente como CNAME"
+					hasCriticalError = true
+				} else if !hasMX {
+					result.Error = "No existen registros MX en el servidor NS"
+					// Esto es advertencia, no necesariamente crítico
+				}
+			}
+		}
+
+		if !hasCriticalError {
+			wwwNotCNAME, err := validateWWW(domain, ns)
+			if err != nil {
+				result.Error = fmt.Sprintf("Error validando registro WWW: %v", err)
+				hasCriticalError = true
+			} else {
+				result.WWWNotCNAME = &wwwNotCNAME
+				if !wwwNotCNAME {
+					result.Error = "Registro WWW definido incorrectamente como CNAME"
+					hasCriticalError = true
+				}
 			}
 		}
 
@@ -260,7 +345,7 @@ func analyzeDomain(domain string) (DNSResponse, error) {
 
 	// Devolver resultados
 	return DNSResponse{
-		Results:       results,
+		Results:             results,
 		DelegationDiagnosis: delegationDiagnosis,
 	}, nil
 }
@@ -321,25 +406,6 @@ func getReferenceSerial(serials map[string]*uint32) *uint32 {
 
 func getParentNS(domain string) ([]string, error) {
 	dnsClient := &dns.Client{Timeout: 3 * time.Second}
-	rootServers := []string{
-		//"1.1.1.1",    // Cloudflare
-		//"8.8.8.8",    // Google
-		//"9.9.9.9",    // Quad9
-		//"198.41.0.4", // Root Server
-		"a.root-servers.net",
-		"b.root-servers.net",
-		"c.root-servers.net",
-		"d.root-servers.net",
-		"e.root-servers.net",
-		"f.root-servers.net",
-		"g.root-servers.net",
-		"h.root-servers.net",
-		"i.root-servers.net",
-		"j.root-servers.net",
-		"k.root-servers.net",
-		"l.root-servers.net",
-		"m.root-servers.net",
-	}
 
 	// Asegurar que el dominio sea un FQDN
 	if !strings.HasSuffix(domain, ".") {
@@ -426,4 +492,158 @@ func resolveServerIPs(servers []string) []string {
 		ips = append(ips, addrs[0]) // Usar la primera dirección IP
 	}
 	return ips
+}
+
+// ########################################################################
+// ############## POSIBLES MÉTRICAS BASADAS EN LA TESIS ###################
+
+// Registros CNAME
+// validateNSCNAME: verifica que un servidor NS no esté definido como registro CNAME.
+// Consulta los Root Servers definidos para obtener una respuesta autoritativa.
+func validateNSCNAME(server string) (bool, error) {
+	dnsClient := &dns.Client{Timeout: 3 * time.Second}
+
+	// Asegura que el servidor sea FQDN
+	fqdnServer := dns.Fqdn(server)
+
+	// Mensaje DNS preguntando por registro tipo CNAME
+	msg := new(dns.Msg)
+	msg.SetQuestion(fqdnServer, dns.TypeCNAME)
+
+	// Consultar cada servidor raíz hasta obtener respuesta autoritativa
+	for _, rootServer := range rootServers {
+		resp, _, err := dnsClient.Exchange(msg, rootServer+":53")
+		if err != nil {
+			continue // Intenta siguiente root server
+		}
+
+		// Si la respuesta tiene Rcode NXDOMAIN, no existe CNAME
+		if resp.Rcode == dns.RcodeNameError {
+			return true, nil // No existe registro CNAME, válido
+		}
+
+		// Verificar respuestas recibidas
+		for _, ans := range resp.Answer {
+			if ans.Header().Rrtype == dns.TypeCNAME {
+				return false, nil // Existe CNAME, inválido
+			}
+		}
+
+		// Si la respuesta no contiene errores pero tampoco respuestas, asumir no existe CNAME
+		if resp.Rcode == dns.RcodeSuccess && len(resp.Answer) == 0 {
+			return true, nil
+		}
+	}
+
+	// Si ningún servidor raíz entregó respuesta concluyente
+	return false, fmt.Errorf("No se pudo obtener respuesta concluyente sobre registro CNAME para NS %s desde servidores raíz", server)
+}
+
+// Registros MX
+// validateMX verifica que existan registros MX para el dominio y que estos no sean registros CNAME.
+func validateMX(domain string, server string) (hasMX bool, mxNotCNAME bool, err error) {
+	dnsClient := &dns.Client{Timeout: 3 * time.Second}
+
+	// Crear mensaje DNS preguntando por registros MX
+	msgMX := new(dns.Msg)
+	msgMX.SetQuestion(dns.Fqdn(domain), dns.TypeMX)
+
+	// Consulta directamente al servidor NS del dominio
+	respMX, _, err := dnsClient.Exchange(msgMX, server+":53")
+	if err != nil {
+		return false, false, fmt.Errorf("Error consultando registros MX en %s: %v", server, err)
+	}
+
+	if respMX.Rcode != dns.RcodeSuccess || len(respMX.Answer) == 0 {
+		// No se encontraron registros MX
+		return false, false, nil
+	}
+
+	hasMX = true
+	mxNotCNAME = true // asumimos válido hasta probar lo contrario
+
+	for _, rr := range respMX.Answer {
+		switch rr.(type) {
+		case *dns.CNAME:
+			mxNotCNAME = false // inválido: MX definido como CNAME
+		case *dns.MX:
+			// correcto: MX encontrado y no es CNAME, seguir revisando
+		default:
+			// otros registros se ignoran
+		}
+	}
+
+	return hasMX, mxNotCNAME, nil
+}
+
+// validateWWW verifica que el registro WWW del dominio no sea un registro CNAME.
+func validateWWW(domain string, server string) (wwwNotCNAME bool, err error) {
+	dnsClient := &dns.Client{Timeout: 3 * time.Second}
+
+	// Crear mensaje DNS preguntando específicamente por registro CNAME de www
+	msgWWW := new(dns.Msg)
+	msgWWW.SetQuestion(dns.Fqdn("www."+domain), dns.TypeCNAME)
+
+	// Consulta directamente al servidor NS del dominio
+	respWWW, _, err := dnsClient.Exchange(msgWWW, server+":53")
+	if err != nil {
+		return false, fmt.Errorf("Error consultando registro WWW en %s: %v", server, err)
+	}
+
+	// Revisar las respuestas recibidas para detectar CNAME
+	for _, rr := range respWWW.Answer {
+		if rr.Header().Rrtype == dns.TypeCNAME {
+			return false, nil // inválido: www definido como CNAME
+		}
+	}
+
+	return true, nil // correcto: no hay registro CNAME para www
+}
+
+// evaluateSOAParams analiza el formato del serial y la coherencia/rangos de los tiempos SOA.
+// Devuelve `true` si todo es correcto, o un `map[string]bool` con los errores.
+func evaluateSOAParams(soa *dns.SOA) interface{} {
+	errors := make(map[string]bool)
+
+	// Validar formato del serial (AAAAMMDDnn)
+	serialStr := fmt.Sprint(soa.Serial)
+	if len(serialStr) == 10 {
+		year := serialStr[0:4]
+		month := serialStr[4:6]
+		day := serialStr[6:8]
+		yearInt, _ := strconv.Atoi(year)
+		monthInt, _ := strconv.Atoi(month)
+		dayInt, _ := strconv.Atoi(day)
+		currentYear := time.Now().Year()
+
+		if yearInt < currentYear-10 || yearInt > currentYear || monthInt < 1 || monthInt > 12 || dayInt < 1 || dayInt > 31 {
+			errors["serial_format_ok"] = false
+		}
+	} else {
+		errors["serial_format_ok"] = false
+	}
+
+	// Validar orden lógico: retry < refresh < minimum < expire
+	if !(soa.Retry < soa.Refresh && soa.Refresh < soa.Minttl && soa.Minttl < soa.Expire) {
+		errors["timing_order_ok"] = false
+	}
+
+	// Validar rangos
+	if soa.Refresh < 3600 || soa.Refresh > 7200 {
+		errors["refresh_ok"] = false
+	}
+	if soa.Retry < 120 || soa.Retry > 7200 {
+		errors["retry_ok"] = false
+	}
+	if soa.Expire < 1209600 || soa.Expire > 2419200 {
+		errors["expire_ok"] = false
+	}
+	if soa.Minttl < 86400 || soa.Minttl > 432000 {
+		errors["minimum_ok"] = false
+	}
+
+	if len(errors) == 0 {
+		return true
+	}
+	return errors
 }
