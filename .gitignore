@@ -1,6 +1,7 @@
 *.csv
 *.json
 *go.mod 
+*go.sum
 DrDNS/go.sum
 drdns.pl
 main_drdns
