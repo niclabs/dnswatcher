@@ -3,6 +3,12 @@ package dataCollector
 import (
 	"database/sql"
 	"fmt"
+	"net"
+	"runtime"
+	"strings"
+	"sync"
+	"time"
+
 	_ "github.com/lib/pq"
 	"github.com/miekg/dns"
 	"github.com/niclabs/Observatorio/dbController"
@@ -10,11 +16,6 @@ import (
 	"github.com/niclabs/Observatorio/geoIPUtils"
 	"github.com/niclabs/Observatorio/utils"
 	"github.com/oschwald/geoip2-golang"
-	"net"
-	"runtime"
-	"strings"
-	"sync"
-	"time"
 )
 
 var domain_list_size = 0
@@ -36,6 +37,29 @@ var configServers []string
 var weirdStringSubdomainName = "zskldhoisdh123dnakjdshaksdjasmdnaksjdh" //potentially nonexistent subdomain To use with NSEC
 
 var dnsClient *dns.Client
+
+type RootServer struct {
+	Name string // Nombre del servidor
+	IPv4 string // Dirección IPv4
+	IPv6 string // Dirección IPv6
+}
+
+// Lista de servidores raíz con sus direcciones IP
+var rootServers = []RootServer{
+	{"a.root-servers.net", "198.41.0.4", "2001:503:ba3e::2:30"},
+	{"b.root-servers.net", "199.9.14.201", "2001:500:200::b"},
+	{"c.root-servers.net", "192.33.4.12", "2001:500:2::c"},
+	{"d.root-servers.net", "199.7.91.13", "2001:500:2d::d"},
+	{"e.root-servers.net", "192.203.230.10", "2001:500:a8::e"},
+	{"f.root-servers.net", "192.5.5.241", "2001:500:2f::f"},
+	{"g.root-servers.net", "192.112.36.4", "2001:500:12::d0d"},
+	{"h.root-servers.net", "198.97.190.53", "2001:500:1::53"},
+	{"i.root-servers.net", "192.36.148.17", "2001:7fe::53"},
+	{"j.root-servers.net", "192.58.128.30", "2001:503:c27::2:30"},
+	{"k.root-servers.net", "193.0.14.129", "2001:7fd::1"},
+	{"l.root-servers.net", "199.7.83.42", "2001:500:1::42"},
+	{"m.root-servers.net", "202.12.27.33", "2001:dc3::35"},
+}
 
 func InitCollect(dontProbeFileName string, drop bool, user string, password string, host string, port int, dbname string, geoipdb *geoIPUtils.GeoipDB, dnsServers []string) error {
 	drop = false //be careful, if this is true, it will drop the complete database
@@ -131,7 +155,6 @@ func StartCollect(input string, c int, dbname string, user string, password stri
 
 func createCollectorRoutines(db *sql.DB, inputFile string, runId int) {
 	startTime := time.Now()
-
 	fmt.Println("EXECUTING WITH ", concurrency, " GOROUTINES;")
 
 	domainsList, err := utils.ReadLines(inputFile)
@@ -179,10 +202,22 @@ func createCollectorRoutines(db *sql.DB, inputFile string, runId int) {
 	/*Close the queue*/
 	close(domainsQueue)
 
-	/*wait for routines to finish*/
+	// Wait for routines to finish
 	wg.Wait()
 
-	totalTime = (int)(time.Since(startTime).Nanoseconds())
+	// Recolectar datos de disponibilidad
+	availabilityWg := sync.WaitGroup{}
+	availabilityWg.Add(1)
+	go func() {
+		defer availabilityWg.Done()
+		collectAvailabilityData(runId, db)
+	}()
+
+	// Esperar a que se complete la recolección de datos de disponibilidad
+	availabilityWg.Wait()
+
+	// Guardar el resultado de la ejecución
+	totalTime := (int)(time.Since(startTime).Nanoseconds())
 	dbController.SaveCorrectRun(runId, totalTime, true, db)
 	fmt.Println("Successful Run. run_id:", runId)
 	db.Close()
@@ -270,6 +305,7 @@ func checkTCP(domainName string, ns string) (TCP bool) {
 		return TCP
 	}
 }
+
 func checkZoneTransfer(domainName string, ns string) (zoneTransfer bool) {
 	zoneTransfer = false
 	zt, err := dnsUtils.ZoneTransfer(domainName, ns)
@@ -760,6 +796,104 @@ func collectSingleDomainInfo(domainName string, runId int, db *sql.DB) {
 		getAndSaveDNSSECinfo(domainName, domainNameServers4, domainId, runId, db)
 	}
 
+}
+
+// Invoca a la consulta SOA para cada IP con ambos protocolos
+func collectAvailabilityData(runId int, db *sql.DB) {
+	for _, server := range rootServers {
+		for _, protocol := range []string{"udp", "tcp"} {
+			// Realizar consulta SOA usando IPv4
+			success, duration := querySOA(server.IPv4, protocol, dnsClient)
+
+			availabilityResult := dbController.AvailabilityResult{
+				RunID:     runId,
+				Server:    server.Name,
+				Transport: protocol,
+				Duration:  duration,
+				Correct:   success,
+			}
+
+			// Guardamos los datos de la duración de la consulta en la database
+			dbController.SaveAvailabilityResults(runId, availabilityResult, db)
+
+			if success {
+				fmt.Printf("Successful SOA query for %s (IPv4) with %s\n", server.Name, protocol)
+			} else {
+				fmt.Printf("Failed SOA query for %s (IPv4) with %s\n", server.Name, protocol)
+			}
+
+			/* Realizar consulta SOA usando IPv6
+			/* No la estoy ejecutando ya que mi proveedor no soporta conexión IPv6,
+			   pero debería funcionar en uno que si soporta
+
+			success, duration = querySOA(server.IPv6, protocol, dnsClient)
+
+			availabilityResult = dbController.AvailabilityResult{
+				RunID:     runId,
+				Server:    server.Name,
+				Transport: protocol,
+				Duration:  duration,
+				Correct:   success,
+			}
+
+			dbController.SaveAvailabilityResults(runId, availabilityResult, db)
+
+			if success {
+				fmt.Printf("Successful SOA query for %s (IPv6) with %s\n", server.Name, protocol)
+			} else {
+				fmt.Printf("Failed SOA query for %s (IPv6) with %s\n", server.Name, protocol)
+			}
+			*/
+		}
+	}
+}
+
+// Manda la consulta SOA
+func querySOA(server string, protocol string, c *dns.Client) (bool, float64) {
+	// Configurar el timeout
+	c.Timeout = 4 * time.Second
+
+	// Establecer el protocolo (UDP o TCP)
+	c.Net = protocol
+
+	// Crear el mensaje de consulta
+	m := new(dns.Msg)
+	m.SetQuestion(".", dns.TypeSOA)
+
+	startTime := time.Now() // Iniciar temporizador
+
+	// Formatear la dirección correctamente
+	address := server
+	if isIPv6(server) {
+		address = "[" + server + "]" // Agregar corchetes para direcciones IPv6
+		fmt.Print("Esta es IPv6: ")
+	} else {
+		fmt.Print("Esta es IPv4: ")
+	}
+
+	// Realizar la consulta
+	r, _, err := c.Exchange(m, address+":53")
+	duration := time.Since(startTime).Seconds() // Calcular duración
+
+	if err != nil {
+		fmt.Printf("Error querying %s with %s: %v\n", server, protocol, err)
+		return false, duration // Retornar duración si hay error
+	}
+
+	// Verificar si se recibió un SOA
+	for _, ans := range r.Answer {
+		if _, ok := ans.(*dns.SOA); ok {
+			return true, duration // Consulta exitosa
+		}
+	}
+
+	fmt.Printf("No SOA record received from %s with %s\n", server, protocol)
+	return false, duration // No se recibió un SOA
+}
+
+// Función para verificar si una dirección es IPv6
+func isIPv6(address string) bool {
+	return net.ParseIP(address).To4() == nil
 }
 
 func isIPInDontProbeList(ip net.IP) bool {
