@@ -4,9 +4,11 @@
 *go.sum
 DrDNS/go.sum
 drdns.pl
-main_drdns
+main_drdnsg
 main_rest
 main_drdns.exe
+config.yml
+.idea/
 
 # extracted from https://github.com/github/gitignore/blob/main/Python.gitignore
 # Byte-compiled / optimized / DLL files
