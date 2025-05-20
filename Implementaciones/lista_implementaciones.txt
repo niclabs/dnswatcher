@@ -1,0 +1,89 @@
+1. Disponibilidad por versión de IP (IPv4/IPv6)
+Estado: Implementado
+Referencia RSSAC047: 5.1 - RSI Availability
+Descripción: Evalúa si los servidores autoritativos de cada dominio responden correctamente bajo ambas versiones de protocolo IP.
+¿Cómo?: SE realizan consultas tipo A (IPv4) y AAAA (IPv6) sobre los NS de cada dominio. Se cuenta cuántos responden por cada protocolo.
+
+
+2. Disponibilidad por tipo de transporte (UDP/TCP)
+Estado: En revisión
+Referencia RSSAC047:  5.1 - RSI Availability
+Descripción: Determina si los servidores soportan consultas DNS a través de UDP y TCP, fundamentales para garantizar compatibilidad y tolerancia a fallos.
+¿Cómo?: Se consulta a cada IP asociada a NS mediante tipo A usando ambos transportes. Se cuenta cuántos responden exitosamente.
+
+
+3. Latencia de respuesta y *latencia de publicación
+Estado: IMplementado
+Referencias RSSAC047: 5.2 - RSI Response Latency
+                      5.4 - RSI Publication Latency
+Descripción: Latencia de respuesta: mide el tiempo en recibir una respuesta a una consulta SOA.
+             Latencia de publicación: evalúa cuánto demora un vantage point en observar un nuevo serial SOA (FUTURA IMPLEMENTACIÓN)
+¿Cómo?: Latencia respuesta: Consultas tipo SOA al dominio raíz (“.”), registrando tiempo de respuesta y cambios en serial. Se usan los umbrales del paper (250 ms UDP, 500 ms TCP; 65 min para publicación).
+
+
+4. Cumplimiento de estándares DNS y DNSSEC
+Estado: En proceso
+Referencia RSSAC047: 5.3 - RSI Correctness
+Descripción: Evalúa si las respuestas recibidas son correctas conforme al contenido del root zone y validación DNSSEC.
+¿Cómo?: Consultas a registros conocidos (SOA, NS, DNSKEY, DS) y negativos (NXDOMAIN aleatorio), validando RRSIG, NSEC y flags según los criterios definidos en el paper.
+
+
+5. Tasa de éxito/fallo en DNSSEC
+Estado: En proceso
+Referencia RSSAC047: 5.3 - RSI Correctness
+Descripción: Cuantifica la proporción de respuestas DNSSEC correctamente validadas v/s fallidas.
+Idea: - En las respuestas recibidas, revisaremos si están presentes los registros RRSIG, NSEC, NSEC3.
+      - Con esto validamos la firma con dnskey obtenido de una consulta separada.
+      - Cuentamos los casos con y sin validación exitosa -> calculamos porcentaje.
+
+
+6. Validación de firma y registros DS
+Estado: En espera
+Referencia RSSAC047: 5.3
+Descripción: Verifica específicamente la correcta publicación y firma de los registros DS y su coherencia con NSEC/NSEC3.
+Idea: Para cada dominio, consultamos DS y luego DNSKEY, nos fijamos que el DS corresponda con la clave pública en DNSKEY.
+
+
+7. Detalles de fallos y validaciones de configuración DNSSEC
+Estado: En espera
+Referencia RSSAC047: 4.8 - Unexpected Results
+Descripción: Desglose específico de errores detectados en respuestas DNSSEC (firmas inválidas, inconsistencias en secciones, etc.).
+
+
+8. Redundancia y distribución de servidores
+Estado: En espera
+Referencia RSSAC047: 3 - Vantage Points y 4.6 - Anycast
+Descripción: Evalúa si los dominios están respaldados por múltiples servidores en distintas redes (redundancia y cobertura).
+Idea: Contar cuántos servidores NS distintos tiene cada dominio, revisamos si están distribuidos en subredes diferentes
+
+
+9. Clasificación automática de errores por categoría
+Estado: En espera
+Referencia RSSAC047: 4.8 - Unexpected Results
+Descripción: Agrupa los errores detectados (timeouts, fallos TCP, respuestas NXDOMAIN inesperadas, errores DNSSEC) en categorías para facilitar diagnóstico.
+Idea: Similar a la implementación del DrDNS
+
+
+10. Métricas bajo condiciones adversas (carga, congestión)
+Estado: En espera
+Referencia RSSAC047: 4.8 - Unexpected Results
+Descripción: Evalúa el comportamiento de los servidores DNS cuando se simulan condiciones adversas como latencia elevada, pérdida de paquetes o tráfico intenso.
+Idea: Usar la repo de erres sugerida por el profesor Urzúa.
+
+
+11. Métricas agregadas a nivel de sistema (RSS)
+Referencia RSSAC047: 6 - RSS Metrics
+Descripción: Medición de disponibilidad, latencia, y publicación a nivel de todo el sistema raíz (no sólo servidores individuales).
+
+12. Inclusión de NSID en las consultas
+Referencia RSSAC047: 4.8
+Descripción: Permite identificar exactamente qué instancia respondió ante fallos inesperados.
+
+13. Separación explícita entre respuestas positivas y negativas
+Referencia RSSAC047: 5.3 - Correctness
+Descripción: Distinguir entre errores en respuestas esperadas positivas (SOA, NS, etc.) y negativas (NXDOMAIN), aplicando reglas distintas de validación.
+
+14. Distribución de vantage points y diversidad geográfica/topológica
+Referencia RSSAC047: 3.1 y 3.2
+Descripción: Se sugiere expandir el sistema para incluir múltiples vantage points distribuidos por región y red, idealmente 20, para obtener resultados representativos.
+
