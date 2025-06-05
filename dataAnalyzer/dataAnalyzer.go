@@ -16,9 +16,27 @@ import (
 	"github.com/niclabs/Observatorio/dbController"
 )
 
+// mutexTT is a mutex used to synchronize access to the total time variable across goroutines.
 var mutexTT *sync.Mutex
+
+// jsonsFolder is the directory where JSON files will be saved.
 var jsonsFolder string = "jsons"
 
+// AnalyzeData processes domain data for a given run, performing DNSSEC checks and generating statistics.
+//
+// It connects to a PostgreSQL database using the provided credentials, retrieves all domains for the specified run,
+// and analyzes each domain concurrently. After processing, it generates and saves global statistics in JSON format.
+//
+// Parameters:
+//   - runId: Identifier of the run to analyze.
+//   - dbname: Name of the PostgreSQL database.
+//   - user: Database user.
+//   - password: Database password.
+//   - host: Database host address.
+//   - port: Database port.
+//
+// The function prints timing information and database connection stats to standard output.
+// Any errors encountered during processing are logged or printed.
 func AnalyzeData(runId int, dbname string, user string, password string, host string, port int) {
 	mutexTT = &sync.Mutex{}
 	t := time.Now()
@@ -43,7 +61,7 @@ func AnalyzeData(runId int, dbname string, user string, password string, host st
 	wg := sync.WaitGroup{}
 	wg.Add(concurrency)
 
-	for i := 0; i < concurrency; i++ { //Lanzo n rutinas para que lean de la cola
+	for i := 0; i < concurrency; i++ { // Start c goroutines
 		go func(t int) {
 			j := 0
 			totalTime := 0
@@ -60,10 +78,11 @@ func AnalyzeData(runId int, dbname string, user string, password string, host st
 		}(i)
 	}
 
-	//Ahora hay que llenar la cola!
+	//Now we have to fill the queue with domainIds!
 	rows, err := dbController.GetDomains(runId, db)
 	defer rows.Close()
-	for rows.Next() { //para cada dominio hacer lo siguiente:
+	//for each domainId in the run:
+	for rows.Next() {
 		var domainId int
 		if err := rows.Scan(&domainId); err != nil {
 			log.Fatal(err)
@@ -73,9 +92,8 @@ func AnalyzeData(runId int, dbname string, user string, password string, host st
 	if err := rows.Err(); err != nil {
 		log.Fatal(err)
 	}
-	close(domainIds) //Cierro la cola
-	//espero a que todos terminen
-	wg.Wait()
+	close(domainIds) //Close the queue
+	wg.Wait()        // waiting for all goroutines to finish
 	getGlobalStatistics(runId, ts, db)
 
 	TotalTime := (int)(time.Since(t).Nanoseconds())
@@ -85,6 +103,19 @@ func AnalyzeData(runId int, dbname string, user string, password string, host st
 	fmt.Println("openconnections", db.Stats())
 
 }
+
+// verifyDNSSEC performs a series of DNSSEC validation checks for the specified domain.
+//
+// It first checks if a DNSKEY record exists for the given domain ID in the database.
+// If no DNSKEY is found, the function returns immediately. Otherwise, it is intended
+// to verify the DS record against the DNSKEY SEP, validate ZSK and KSK relationships,
+// and check for nonexistence proofs using NSEC or NSEC3 records, including wildcard handling.
+//
+// Parameters:
+//   - domainId: The identifier of the domain to validate.
+//   - db: The database connection used to retrieve DNSSEC information.
+//
+// This function does not return a value; it is designed to be used internally for DNSSEC validation steps.
 func verifyDNSSEC(domainId int, db *sql.DB) {
 	//check if dnskey is found
 	dnskeyFound, _ := dbController.GetDNSKEYInfo(domainId, db)
@@ -105,6 +136,17 @@ func verifyDNSSEC(domainId int, db *sql.DB) {
 	//if wildcard check rrsig ok
 }
 
+// CheckDomainInfo performs DNSSEC validation checks for a given domain and updates its DNSSEC status in the database.
+//
+// It calls verifyDNSSEC to run a series of DNSSEC checks, then uses CheckDNSSEC to determine the presence and validity
+// of DS, DNSKEY, NSEC, and NSEC3 records. If all required DNSSEC conditions are met, it marks the domain as DNSSEC-valid
+// in the database.
+//
+// Parameters:
+//   - domainId: The identifier of the domain to check.
+//   - db: The database connection used for retrieving and updating DNSSEC information.
+//
+// This function does not return a value; it updates the DNSSEC status for the domain in the database.
 func CheckDomainInfo(domainId int, db *sql.DB) {
 	//verify DNSSEC
 	verifyDNSSEC(domainId, db)
@@ -119,7 +161,18 @@ func CheckDomainInfo(domainId int, db *sql.DB) {
 
 }
 
-/*global statistics*/
+// getGlobalStatistics generates and saves global statistics for a given run.
+//
+// This function initializes the JSON output directory and sequentially calls helper functions
+// to compute and store various statistics, including dispersion, DNSSEC status, nameserver characteristics,
+// and recommendations, all in JSON format.
+//
+// Parameters:
+//   - runId: Identifier of the run to analyze.
+//   - ts: Timestamp string used for naming output files.
+//   - db: Database connection used to retrieve statistical data.
+//
+// This function does not return a value; it writes results to JSON files.
 func getGlobalStatistics(runId int, ts string, db *sql.DB) {
 	initjsonFolder()
 	saveDispersion(runId, ts, db)
@@ -128,6 +181,16 @@ func getGlobalStatistics(runId int, ts string, db *sql.DB) {
 	saveJsonRecomendations(runId, ts)
 }
 
+// saveJsonRecomendations generates recommendations in JSON format for a given run.
+//
+// This function constructs file paths for the input and output JSON files based on the run ID and timestamp.
+// It then executes an external command to process the input file and generate the recommendations file.
+//
+// Parameters:
+//   - runId: Identifier of the run to process.
+//   - ts: Timestamp string used for naming the input file.
+//
+// This function does not return a value; it logs any errors encountered during command execution.
 func saveJsonRecomendations(runId int, ts string) {
 	filename := "./json/" + strconv.Itoa(runId) + "CountNSCountryASNPerDomain" + ts + ".json"
 	newfilename := "./json/" + strconv.Itoa(runId) + "CountRecomendations.json"
@@ -145,9 +208,18 @@ func initjsonFolder() {
 	}
 }
 
-/*Nameserver characteristics*/
-/*Dispersion*/
-// Se agrega funcion para obtener resultados de la disponibilidad
+// saveDispersion generates and saves various dispersion and nameserver characteristics statistics for a given run.
+//
+// This function sequentially calls helper functions to compute and store statistics such as the number of nameservers,
+// ASNs, countries per domain, combined nameserver/country/ASN data, IPv4/IPv6 nameserver counts, domains with specific
+// nameserver IP counts, exclusive nameserver IPs, and availability results. All results are saved in JSON format.
+//
+// Parameters:
+//   - runId: Identifier of the run to process.
+//   - ts: Timestamp string used for naming output files.
+//   - db: Database connection used to retrieve statistical data.
+//
+// This function does not return a value; it writes results to JSON files.
 func saveDispersion(runId int, ts string, db *sql.DB) {
 	saveCountNSPerDomain(runId, ts, db)
 	saveCountASNPerDomain(runId, ts, db)
@@ -159,7 +231,17 @@ func saveDispersion(runId int, ts string, db *sql.DB) {
 	saveAvailabilityResults(runId, ts, db)
 }
 
-// Obtiene los resultados de disponibilidad y los guarda en formato json
+// saveAvailabilityResults retrieves availability results from the database and saves them in JSON format.
+//
+// This function queries the database for availability statistics related to the specified run ID,
+// processes the result set, and writes the data to a JSON file named using the run ID and timestamp.
+//
+// Parameters:
+//   - runId: Identifier of the run to process.
+//   - ts: Timestamp string used for naming the output file.
+//   - db: Database connection used to retrieve availability data.
+//
+// This function does not return a value; it panics on critical errors and logs scanning issues.
 func saveAvailabilityResults(runId int, ts string, db *sql.DB) {
 	rows, err := dbController.CountAvailabilityResults(runId, db)
 	if err != nil {
@@ -206,6 +288,17 @@ func saveAvailabilityResults(runId int, ts string, db *sql.DB) {
 	}
 }
 
+// saveCountDomainsWithCountNSIPExclusive retrieves and saves statistics about domains with exclusive nameserver IPs.
+//
+// This function queries the database for domains that have exclusive nameserver IP addresses for a given run ID,
+// processes the result set, and writes the data to a JSON file named using the run ID and timestamp.
+//
+// Parameters:
+//   - runId: Identifier of the run to process.
+//   - ts: Timestamp string used for naming the output file.
+//   - db: Database connection used to retrieve statistical data.
+//
+// This function does not return a value; it panics on critical errors and logs scanning issues.
 func saveCountDomainsWithCountNSIPExclusive(runId int, ts string, db *sql.DB) {
 	rows, err := dbController.CountDomainsWithCountNSIPExclusive(runId, db)
 	if err != nil {
@@ -252,6 +345,17 @@ func saveCountDomainsWithCountNSIPExclusive(runId int, ts string, db *sql.DB) {
 	}
 }
 
+// saveCountCountryPerDomain retrieves and saves statistics about the number of countries per domain.
+//
+// This function queries the database for country distribution data for each domain in the specified run,
+// processes the result set, and writes the data to a JSON file named using the run ID and timestamp.
+//
+// Parameters:
+//   - runId: Identifier of the run to process.
+//   - ts: Timestamp string used for naming the output file.
+//   - db: Database connection used to retrieve statistical data.
+//
+// This function does not return a value; it panics on critical errors and logs scanning issues.
 func saveCountCountryPerDomain(runId int, ts string, db *sql.DB) {
 	rows, err := dbController.CountCountryPerDomain(runId, db)
 	if err != nil {
@@ -298,6 +402,17 @@ func saveCountCountryPerDomain(runId int, ts string, db *sql.DB) {
 	}
 }
 
+// saveCountASNPerDomain retrieves and saves statistics about the number of Autonomous System Numbers (ASNs) per domain.
+//
+// This function queries the database for ASN distribution data for each domain in the specified run,
+// processes the result set, and writes the data to a JSON file named using the run ID and timestamp.
+//
+// Parameters:
+//   - runId: Identifier of the run to process.
+//   - ts: Timestamp string used for naming the output file.
+//   - db: Database connection used to retrieve statistical data.
+//
+// This function does not return a value; it panics on critical errors and logs scanning issues.
 func saveCountASNPerDomain(runId int, ts string, db *sql.DB) {
 	rows, err := dbController.CountASNPerDomain(runId, db)
 	if err != nil {
@@ -344,6 +459,17 @@ func saveCountASNPerDomain(runId int, ts string, db *sql.DB) {
 	}
 }
 
+// saveCountNSPerDomain retrieves and saves statistics about the number of nameservers per domain.
+//
+// This function queries the database for the count of nameservers associated with each domain in the specified run,
+// processes the result set, and writes the data to a JSON file named using the run ID and timestamp.
+//
+// Parameters:
+//   - runId: Identifier of the run to process.
+//   - ts: Timestamp string used for naming the output file.
+//   - db: Database connection used to retrieve statistical data.
+//
+// This function does not return a value; it panics on critical errors.
 func saveCountNSPerDomain(runId int, ts string, db *sql.DB) {
 	rows, err := dbController.CountNSPerDomain(runId, db)
 	if err != nil {
@@ -390,6 +516,18 @@ func saveCountNSPerDomain(runId int, ts string, db *sql.DB) {
 	}
 }
 
+// saveCountNSCountryASNPerDomain retrieves and saves statistics about the number of nameservers, countries, and ASNs per domain.
+//
+// This function queries the database for combined statistics on nameservers, countries, and Autonomous System Numbers (ASNs)
+// associated with each domain in the specified run. It processes the result set and writes the data to a JSON file named
+// using the run ID and timestamp.
+//
+// Parameters:
+//   - runId: Identifier of the run to process.
+//   - ts: Timestamp string used for naming the output file.
+//   - db: Database connection used to retrieve statistical data.
+//
+// This function does not return a value; it panics on critical errors and logs scanning issues.
 func saveCountNSCountryASNPerDomain(runId int, ts string, db *sql.DB) {
 	rows, err := dbController.CountNSCountryASNPerDomain(runId, db)
 	if err != nil {
@@ -436,6 +574,17 @@ func saveCountNSCountryASNPerDomain(runId int, ts string, db *sql.DB) {
 	}
 }
 
+// saveCountNSIPv4IPv6 retrieves and saves statistics about the number of distinct nameservers with IPv4 and IPv6 addresses.
+//
+// This function queries the database for the count of unique nameservers using IPv4 and IPv6 for the specified run ID,
+// processes the results, and writes the data to a JSON file named using the run ID and timestamp.
+//
+// Parameters:
+//   - runId: Identifier of the run to process.
+//   - ts: Timestamp string used for naming the output file.
+//   - db: Database connection used to retrieve statistical data.
+//
+// This function does not return a value; it panics on critical errors and logs scanning issues.
 func saveCountNSIPv4IPv6(runId int, ts string, db *sql.DB) {
 	rows, err := dbController.CountDistinctNSWithIPv4(runId, db)
 	if err != nil {
@@ -480,6 +629,18 @@ func saveCountNSIPv4IPv6(runId int, ts string, db *sql.DB) {
 	}
 }
 
+// saveCountDomainsWithCountNSIPs retrieves and saves statistics about the number of domains
+// with a specific count of nameserver IPs for a given run.
+//
+// This function queries the database for domains and their associated nameserver IP counts,
+// processes the result set, and writes the data to a JSON file named using the run ID and timestamp.
+//
+// Parameters:
+//   - runId: Identifier of the run to process.
+//   - ts: Timestamp string used for naming the output file.
+//   - db: Database connection used to retrieve statistical data.
+//
+// This function does not return a value; it panics on critical errors and logs scanning issues.
 func saveCountDomainsWithCountNSIPs(runId int, ts string, db *sql.DB) {
 	rows, err := dbController.CountDomainsWithCountNSIp(runId, db)
 	if err != nil {
@@ -526,6 +687,18 @@ func saveCountDomainsWithCountNSIPs(runId int, ts string, db *sql.DB) {
 	}
 }
 
+// saveCountDNSSEC generates and saves a summary of DNSSEC validation results for a given run.
+//
+// This function retrieves the number of domains without DNSSEC, with failed DNSSEC validation,
+// and with successful DNSSEC validation from the database. It then writes these statistics to a
+// JSON file named using the run ID and timestamp.
+//
+// Parameters:
+//   - runId: Identifier of the run to process.
+//   - ts: Timestamp string used for naming the output file.
+//   - db: Database connection used to retrieve DNSSEC statistics.
+//
+// The function panics on critical errors related to file creation or JSON encoding.
 func saveCountDNSSEC(runId int, ts string, db *sql.DB) {
 	dnssecFail, dnssecOk, noDnssec := dbController.CountDomainsWithDNSSEC(runId, db)
 	filename := fmt.Sprintf("%s/%d_CountDomainsWithDNSSEC_%s.json", jsonsFolder, runId, ts)
@@ -548,6 +721,18 @@ func saveCountDNSSEC(runId int, ts string, db *sql.DB) {
 	}
 }
 
+// saveCountDNSSECerrors generates and saves a summary of DNSSEC validation error types for a given run.
+//
+// This function retrieves the number of domains with each type of DNSSEC validation failure
+// (denial of existence, DNSKEY validation, and DS validation) from the database. It then writes
+// these statistics to a JSON file named using the run ID and timestamp.
+//
+// Parameters:
+//   - runId: Identifier of the run to process.
+//   - ts: Timestamp string used for naming the output file.
+//   - db: Database connection used to retrieve DNSSEC error statistics.
+//
+// The function panics on critical errors related to file creation or JSON encoding.
 func saveCountDNSSECerrors(runId int, ts string, db *sql.DB) {
 	denialProof, dnskeyValidation, dsValidation := dbController.CountDomainsWithDNSSECErrors(runId, db)
 	filename := fmt.Sprintf("%s/%d_CountDomainsWithDNSSECerrors_%s.json", jsonsFolder, runId, ts)
@@ -570,6 +755,18 @@ func saveCountDNSSECerrors(runId int, ts string, db *sql.DB) {
 	}
 }
 
+// saveCountNameserverCharacteristics generates and saves statistics about nameserver characteristics for a given run.
+//
+// This function retrieves counts of nameservers with and without specific characteristics (recursivity, EDNS, TCP support,
+// zone transfer, and LOC query response) from the database for the specified run ID. It then writes these statistics
+// to a JSON file named using the run ID and timestamp.
+//
+// Parameters:
+//   - runId: Identifier of the run to process.
+//   - ts: Timestamp string used for naming the output file.
+//   - db: Database connection used to retrieve nameserver characteristic data.
+//
+// The function panics on critical errors related to file creation or JSON encoding.
 func saveCountNameserverCharacteristics(runId int, ts string, db *sql.DB) {
 	recursivity, noRecursivity, edns, noEdns, tcp, noTcp, zoneTransfer, noZoneTransfer, locQuery, noLocQuery := dbController.CountNameserverCharacteristics(runId, db)
 	filename := fmt.Sprintf("%s/%d_CountNameserverCharacteristics_%s.json", jsonsFolder, runId, ts)
@@ -594,11 +791,44 @@ func saveCountNameserverCharacteristics(runId int, ts string, db *sql.DB) {
 	}
 }
 
-/*DNSSEC zone*/
+// saveDNSSEC generates and saves DNSSEC validation statistics and error summaries for a given run.
+//
+// This function sequentially calls helper functions to compute and store the overall DNSSEC validation
+// results and the breakdown of DNSSEC error types. The results are written to JSON files named using
+// the run ID and timestamp.
+//
+// Parameters:
+//   - runId: Identifier of the run to process.
+//   - ts: Timestamp string used for naming the output files.
+//   - db: Database connection used to retrieve DNSSEC statistics.
+//
+// This function does not return a value; it panics on critical errors related to file creation or JSON encoding.
 func saveDNSSEC(runId int, ts string, db *sql.DB) {
 	saveCountDNSSEC(runId, ts, db)
 	saveCountDNSSECerrors(runId, ts, db)
 }
+
+// CheckDNSSEC performs a comprehensive DNSSEC validation for a given domain.
+//
+// This function checks for the presence and validity of DS, DNSKEY, NSEC, and NSEC3 records
+// associated with the specified domain ID in the database. It updates the domain's NSEC and NSEC3
+// information in the database as part of the process. The function returns a set of boolean values
+// indicating the presence and validity of each DNSSEC component, as well as whether a wildcard was detected.
+//
+// Parameters:
+//   - domainId: The identifier of the domain to validate.
+//   - db: The database connection used to retrieve and update DNSSEC information.
+//
+// Returns:
+//   - dsFound:      true if a DS record was found.
+//   - dsOk:         true if the DS record is valid.
+//   - dnskeyFound:  true if a DNSKEY record was found.
+//   - dnskeyOk:     true if the DNSKEY record is valid.
+//   - nsecFound:    true if an NSEC record was found.
+//   - nsecOk:       true if the NSEC record is valid.
+//   - nsec3Found:   true if an NSEC3 record was found.
+//   - nsec3Ok:      true if the NSEC3 record is valid.
+//   - wildcard:     true if a wildcard was detected in NSEC or NSEC3 records.
 func CheckDNSSEC(domainId int, db *sql.DB) (bool, bool, bool, bool, bool, bool, bool, bool, bool) {
 
 	nsecFound, nsecOk, wildcard1 := CheckNSECs(domainId, db)
@@ -614,14 +844,61 @@ func CheckDNSSEC(domainId int, db *sql.DB) (bool, bool, bool, bool, bool, bool, 
 	dnskeyFound, dnskeyOk := CheckDNSKEY(domainId, db)
 	return dsFound, dsOk, dnskeyFound, dnskeyOk, nsecFound, nsecOk, nsec3Found, nsec3Ok, wildcard1 || wildcard2
 }
+
+// CheckDNSKEY retrieves and validates the DNSKEY record for a given domain.
+//
+// This function queries the database for the DNSKEY record associated with the specified domain ID.
+// It returns two boolean values:
+//   - dnskeyFound: true if a DNSKEY record was found for the domain.
+//   - dnskeyOk:    true if the DNSKEY record is considered valid.
+//
+// Parameters:
+//   - domainId: The identifier of the domain to check.
+//   - db:       The database connection used to retrieve DNSKEY information.
+//
+// Returns:
+//   - dnskeyFound: Indicates if a DNSKEY record was found.
+//   - dnskeyOk:    Indicates if the DNSKEY record is valid.
 func CheckDNSKEY(domainId int, db *sql.DB) (dnskeyFound bool, dnskeyOk bool) {
 	dnskeyFound, dnskeyOk = dbController.GetDNSKEYInfo(domainId, db)
 	return
 }
+
+// CheckDS retrieves and validates the DS (Delegation Signer) record for a given domain.
+//
+// This function queries the database for the DS record associated with the specified domain ID.
+// It returns two boolean values:
+//   - dsFound: true if a DS record was found for the domain.
+//   - dsOk:    true if the DS record is considered valid.
+//
+// Parameters:
+//   - domainId: The identifier of the domain to check.
+//   - db:       The database connection used to retrieve DS information.
+//
+// Returns:
+//   - dsFound: Indicates if a DS record was found.
+//   - dsOk:    Indicates if the DS record is valid.
 func CheckDS(domainId int, db *sql.DB) (dsFound bool, dsOk bool) {
 	dsFound, dsOk = dbController.GetDSInfo(domainId, db)
 	return
 }
+
+// CheckNSECs retrieves and validates NSEC records for a given domain.
+//
+// This function checks the NSEC records associated with the specified domain ID in the database.
+// It determines if NSEC records are present, if they are valid according to DNSSEC non-existence
+// proof logic, and whether a wildcard is detected. The function processes all NSEC records for
+// the domain, evaluating RRSIG validity, coverage, and wildcard status. It also considers the
+// non-existence status from the database to decide if the NSEC proof is valid.
+//
+// Parameters:
+//   - domainId: The identifier of the domain to check.
+//   - db: The database connection used to retrieve NSEC information.
+//
+// Returns:
+//   - nsecFound:  true if at least one NSEC record was found.
+//   - nsecOk:     true if the NSEC records provide a valid non-existence proof.
+//   - wildcard:   true if a wildcard was detected in the NSEC records.
 func CheckNSECs(domainId int, db *sql.DB) (nsecFound bool, nsecOk bool, wildcard bool) {
 	_, nonExistenceStatus, err := dbController.GetNonExistenceStatus(domainId, db)
 	if err != nil {
@@ -674,6 +951,23 @@ func CheckNSECs(domainId int, db *sql.DB) (nsecFound bool, nsecOk bool, wildcard
 	}
 	return
 }
+
+// CheckNSEC3s retrieves and validates NSEC3 records for a given domain.
+//
+// This function checks the NSEC3 records associated with the specified domain ID in the database.
+// It determines if NSEC3 records are present, if they provide a valid non-existence proof according
+// to DNSSEC logic, and whether a wildcard is detected. The function processes all NSEC3 records for
+// the domain, evaluating RRSIG validity, match, coverage, and wildcard status. It also considers the
+// non-existence status from the database to decide if the NSEC3 proof is valid.
+//
+// Parameters:
+//   - domainId: The identifier of the domain to check.
+//   - db: The database connection used to retrieve NSEC3 information.
+//
+// Returns:
+//   - nsec3Found:  true if at least one NSEC3 record was found.
+//   - nsec3Ok:     true if the NSEC3 records provide a valid non-existence proof.
+//   - wildcard:    true if a wildcard was detected in the NSEC3 records.
 func CheckNSEC3s(domainId int, db *sql.DB) (nsec3Found bool, nsec3Ok bool, wildcard bool) {
 	_, nonExistenceStatus, err := dbController.GetNonExistenceStatus(domainId, db)
 	if err != nil {

@@ -18,33 +18,47 @@ import (
 	"github.com/oschwald/geoip2-golang"
 )
 
+// domain_list_size stores the number of domains to be processed.
 var domain_list_size = 0
 
+// concurrency defines the number of goroutines used for data collection.
 var concurrency = 100
 
+// dontProbeList contains IP networks that should not be probed.
 var dontProbeList []*net.IPNet
 
+// totalTime accumulates the total time taken for data collection.
 var totalTime = 0
 
+// debug enables debug logging if set to true.
 var debug = false
+
+// verbose enables verbose logging if set to true.
 var verbose = false
 
+// geoipCountryDb is the GeoIP2 database reader for country lookups.
 var geoipCountryDb *geoip2.Reader
+
+// geoipAsnDb is the GeoIP2 database reader for ASN lookups.
 var geoipAsnDb *geoip2.Reader
 
+// configServers holds the list of DNS servers to use for queries.
 var configServers []string
 
+// weirdStringSubdomainName is a random subdomain name used for NSEC/NSEC3 non-existence checks.
 var weirdStringSubdomainName = "zskldhoisdh123dnakjdshaksdjasmdnaksjdh" //potentially nonexistent subdomain To use with NSEC
 
+// dnsClient is the DNS client used for all DNS queries.
 var dnsClient *dns.Client
 
+// RootServer represents a DNS root server with its name and IP addresses.
 type RootServer struct {
 	Name string // Nombre del servidor
 	IPv4 string // Dirección IPv4
 	IPv6 string // Dirección IPv6
 }
 
-// Lista de servidores raíz con sus direcciones IP
+// rootServers is the list of DNS root servers with their IPv4 and IPv6 addresses.
 var rootServers = []RootServer{
 	{"a.root-servers.net", "198.41.0.4", "2001:503:ba3e::2:30"},
 	{"b.root-servers.net", "199.9.14.201", "2001:500:200::b"},
@@ -61,6 +75,29 @@ var rootServers = []RootServer{
 	{"m.root-servers.net", "202.12.27.33", "2001:dc3::35"},
 }
 
+// InitCollect initializes the data collection environment.
+//
+// This function sets up the environment for data collection by performing the following tasks:
+//   - Loads the list of IP networks that should not be probed from the specified file.
+//   - Initializes the GeoIP country and ASN databases.
+//   - Connects to the PostgreSQL database and creates tables if they do not exist.
+//   - Sets the maximum number of CPUs to be used for concurrent processing.
+//   - Configures the DNS servers to be used for queries.
+//   - Initializes the DNS client.
+//
+// Parameters:
+//   - dontProbeFileName: Path to the file containing IP networks that should not be probed.
+//   - drop: If true, drops the existing database (always set to false in this function for safety).
+//   - user: Database username.
+//   - password: Database password.
+//   - host: Database host address.
+//   - port: Database port.
+//   - dbname: Name of the database.
+//   - geoipdb: Pointer to the GeoIP database struct containing country and ASN readers.
+//   - dnsServers: List of DNS servers to use for queries.
+//
+// Returns:
+//   - error: Returns an error if any step fails, otherwise returns nil.
 func InitCollect(dontProbeFileName string, drop bool, user string, password string, host string, port int, dbname string, geoipdb *geoIPUtils.GeoipDB, dnsServers []string) error {
 	drop = false //be careful, if this is true, it will drop the complete database
 	//check Dont probelist file
@@ -101,6 +138,18 @@ func InitCollect(dontProbeFileName string, drop bool, user string, password stri
 
 }
 
+// InitializeDontProbeList loads a list of IP networks (in CIDR notation) from a file
+// and returns a slice of *net.IPNet representing networks that should not be probed.
+//
+// Parameters:
+//   - dpf: Path to the file containing the list of IP networks in CIDR format.
+//
+// The function reads each line from the file, ignoring lines that are empty or contain a '#' character.
+// For each valid CIDR, it parses and appends the network to the returned slice.
+// If a line cannot be parsed as a CIDR, it prints a warning message.
+//
+// Returns:
+//   - dontProbeList: Slice of *net.IPNet with the networks to avoid probing.
 func InitializeDontProbeList(dpf string) (dontProbeList []*net.IPNet) {
 	dontProbeListFile := dpf
 	if len(dontProbeListFile) == 0 {
@@ -126,6 +175,30 @@ func InitializeDontProbeList(dpf string) (dontProbeList []*net.IPNet) {
 	return dontProbeList
 }
 
+// StartCollect initializes and starts the data collection process for a list of domains.
+//
+// This function performs the following steps:
+//   - Connects to the PostgreSQL database using the provided credentials.
+//   - Sets the concurrency level for goroutines.
+//   - Creates a new run entry in the database.
+//   - Sets debug and verbose logging options.
+//   - Launches the data collection routines for the input domain list.
+//   - Prints the total time taken for the collection process.
+//   - Closes the database connection.
+//
+// Parameters:
+//   - input: Path to the file containing the list of domains to process.
+//   - c: Number of concurrent goroutines to use.
+//   - dbname: Name of the PostgreSQL database.
+//   - user: Database username.
+//   - password: Database password.
+//   - host: Database host address.
+//   - port: Database port.
+//   - debugBool: Enables debug logging if true.
+//   - verboseBool: Enables verbose logging if true.
+//
+// Returns:
+//   - runId: The identifier of the created run in the database.
 func StartCollect(input string, c int, dbname string, user string, password string, host string, port int, debugBool bool, verboseBool bool) (runId int) {
 	url := fmt.Sprintf("postgres://%v:%v@%v:%v/%v?sslmode=disable",
 		user,
@@ -153,6 +226,20 @@ func StartCollect(input string, c int, dbname string, user string, password stri
 	return runId
 }
 
+// createCollectorRoutines launches concurrent routines to process a list of domains and collect DNS data.
+//
+// This function performs the following steps:
+//   - Reads the list of domains from the specified input file.
+//   - Initializes a queue and launches a number of goroutines (as defined by the global `concurrency` variable) to process the domains concurrently.
+//   - Each goroutine processes domains from the queue by calling `collectSingleDomainInfo`.
+//   - Progress is printed in 5% increments.
+//   - After all domains are processed, it collects root server availability data.
+//   - Saves the total execution time and marks the run as successful in the database.
+//
+// Parameters:
+//   - db: Database connection.
+//   - inputFile: Path to the file containing the list of domains to process.
+//   - runId: Identifier for the current run in the database.
 func createCollectorRoutines(db *sql.DB, inputFile string, runId int) {
 	startTime := time.Now()
 	fmt.Println("EXECUTING WITH ", concurrency, " GOROUTINES;")
@@ -165,11 +252,11 @@ func createCollectorRoutines(db *sql.DB, inputFile string, runId int) {
 
 	domain_list_size = len(domainsList)
 
-	//CREATES THE ROUTINES
+	// Create the routines
 	domainsQueue := make(chan string, concurrency)
 	wg := sync.WaitGroup{}
 	wg.Add(concurrency)
-	/*Init n routines to read the queue*/
+	//Init n routines to read the queue
 	for i := 0; i < concurrency; i++ {
 		go func(runId int) {
 			j := 0
@@ -199,13 +286,13 @@ func createCollectorRoutines(db *sql.DB, inputFile string, runId int) {
 	}
 	fmt.Println("100%")
 
-	/*Close the queue*/
+	//Close the queue
 	close(domainsQueue)
 
 	// Wait for routines to finish
 	wg.Wait()
 
-	// Recolectar datos de disponibilidad
+	// Collect root server availability data
 	availabilityWg := sync.WaitGroup{}
 	availabilityWg.Add(1)
 	go func() {
@@ -213,28 +300,54 @@ func createCollectorRoutines(db *sql.DB, inputFile string, runId int) {
 		collectAvailabilityData(runId, db)
 	}()
 
-	// Esperar a que se complete la recolección de datos de disponibilidad
+	// Wait for availability data collection to complete
 	availabilityWg.Wait()
 
-	// Guardar el resultado de la ejecución
+	// Save the result of the execution
 	totalTime := (int)(time.Since(startTime).Nanoseconds())
 	dbController.SaveCorrectRun(runId, totalTime, true, db)
 	fmt.Println("Successful Run. run_id:", runId)
 	db.Close()
 }
 
+// manageError logs the provided error message if debug mode is enabled.
+//
+// This function is used to print error messages to the standard output
+// only when the global debug flag is set to true. It helps control
+// the verbosity of error reporting during execution.
+//
+// Parameters:
+//   - err: The error message to be logged.
 func manageError(err string) {
 	if debug {
 		fmt.Println(err)
 	}
 }
 
+// manageVerbosity prints the provided string to the standard output
+// if verbose mode is enabled.
+//
+// This function is used to control the verbosity of the application's output.
+// When the global verbose flag is set to true, it prints the given message.
+//
+// Parameters:
+//   - str: The message to be printed if verbose mode is active.
 func manageVerbosity(str string) {
 	if verbose {
 		fmt.Println(str)
 	}
 }
 
+// getDomainsNameservers retrieves the NS (Name Server) records for a given domain.
+//
+// Parameters:
+//   - domainName: The fully qualified domain name (FQDN) for which to obtain NS records.
+//
+// Returns:
+//   - nameservers: A slice of dns.RR containing the NS records for the domain, or nil if none are found or an error occurs.
+//
+// This function queries the configured DNS servers for NS records of the specified domain using the global DNS client.
+// If an error occurs during the query or no NS records are found, it returns nil.
 func getDomainsNameservers(domainName string) (nameservers []dns.RR) {
 
 	nss, _, err := dnsUtils.GetRecordSet(domainName, dns.TypeNS, configServers, dnsClient)
@@ -250,6 +363,18 @@ func getDomainsNameservers(domainName string) (nameservers []dns.RR) {
 	}
 }
 
+// obtainNsIpv4Info retrieves ASN and country information for a given IPv4 address of a nameserver,
+// checks if the IP is in the Do-Not-Probe list, and saves the nameserver IP information to the database.
+//
+// Parameters:
+//   - ip: IPv4 address of the nameserver.
+//   - domainName: The domain name being processed.
+//   - nameserverId: Identifier of the nameserver in the database.
+//   - runId: Identifier of the current run in the database.
+//   - db: Database connection.
+//
+// Returns:
+//   - nameserverIpString: The string representation of the nameserver IP address, or an empty string if the IP is in the Do-Not-Probe list.
 func obtainNsIpv4Info(ip net.IP, domainName string, nameserverId int, runId int, db *sql.DB) (nameserverIpString string) {
 	nameserverIpString = net.IP.String(ip)
 	dontProbe := true
@@ -265,6 +390,18 @@ func obtainNsIpv4Info(ip net.IP, domainName string, nameserverId int, runId int,
 	dbController.SaveNSIP(nameserverId, nameserverIpString, country, asn, dontProbe, runId, db)
 	return nameserverIpString
 }
+
+// obtainNsIpv6Info retrieves ASN and country information for a given IPv6 address of a nameserver
+// and saves the nameserver IP information to the database.
+//
+// Parameters:
+//   - ip: IPv6 address of the nameserver.
+//   - nameserverId: Identifier of the nameserver in the database.
+//   - runId: Identifier of the current run in the database.
+//   - db: Database connection.
+//
+// Returns:
+//   - nameserverIpString: The string representation of the nameserver IPv6 address.
 func obtainNsIpv6Info(ip net.IP, nameserverId int, runId int, db *sql.DB) (nameserverIpString string) {
 	nameserverIpString = net.IP.String(ip)
 	country := geoIPUtils.GetIPCountry(nameserverIpString, geoipCountryDb)
@@ -272,6 +409,19 @@ func obtainNsIpv6Info(ip net.IP, nameserverId int, runId int, db *sql.DB) (names
 	dbController.SaveNSIP(nameserverId, nameserverIpString, country, asn, false, runId, db)
 	return nameserverIpString
 }
+
+// checkRecursivityAndEDNS checks if a given nameserver provides recursion and supports EDNS for a specific domain.
+//
+// Parameters:
+//   - domainName: The fully qualified domain name (FQDN) to query.
+//   - ns: The nameserver to query (as a string, typically an IP or hostname).
+//
+// Returns:
+//   - recursionAvailable: true if the nameserver allows recursion for the domain, false otherwise.
+//   - EDNS: true if the nameserver supports EDNS (Extension Mechanisms for DNS), false otherwise.
+//
+// This function queries the specified nameserver for the given domain to determine if recursion is available
+// and if EDNS is supported. It uses the global DNS client and logs errors if debug mode is enabled.
 func checkRecursivityAndEDNS(domainName string, ns string) (recursionAvailable bool, EDNS bool) {
 	RecAndEDNS := new(dns.Msg)
 	RecAndEDNS, rtt, err := dnsUtils.GetRecursivityAndEDNS(domainName, ns, "53", dnsClient)
@@ -287,6 +437,18 @@ func checkRecursivityAndEDNS(domainName string, ns string) (recursionAvailable b
 	}
 	return recursionAvailable, EDNS
 }
+
+// checkTCP checks if a given nameserver supports TCP for SOA queries on the specified domain.
+//
+// Parameters:
+//   - domainName: The fully qualified domain name (FQDN) to query.
+//   - ns: The nameserver to query (as a string, typically an IP or hostname).
+//
+// Returns:
+//   - TCP: true if the nameserver responds to a SOA query over TCP, false otherwise.
+//
+// This function sets the DNS client to use TCP, performs a SOA query to the nameserver,
+// and then restores the client to use UDP. If any answer is received, it returns true.
 func checkTCP(domainName string, ns string) (TCP bool) {
 	dnsClient.Net = "tcp"
 	tcp, _, err := dnsUtils.GetRecordSetTCP(domainName, dns.TypeSOA, ns, dnsClient)
@@ -306,6 +468,18 @@ func checkTCP(domainName string, ns string) (TCP bool) {
 	}
 }
 
+// checkZoneTransfer attempts a DNS zone transfer (AXFR) for the specified domain and nameserver.
+//
+// Parameters:
+//   - domainName: The fully qualified domain name (FQDN) to query for a zone transfer.
+//   - ns: The nameserver to query (as a string, typically an IP address or hostname).
+//
+// Returns:
+//   - zoneTransfer: true if the zone transfer was successful, false otherwise.
+//
+// This function uses dnsUtils.ZoneTransfer to initiate an AXFR request to the given nameserver.
+// If the transfer is successful and no error is returned, it returns true. Otherwise, it logs the error
+// (if debug mode is enabled) and returns false.
 func checkZoneTransfer(domainName string, ns string) (zoneTransfer bool) {
 	zoneTransfer = false
 	zt, err := dnsUtils.ZoneTransfer(domainName, ns)
@@ -323,6 +497,18 @@ func checkZoneTransfer(domainName string, ns string) (zoneTransfer bool) {
 	}
 	return zoneTransfer
 }
+
+// checkLOCQuery checks if a given nameserver returns a LOC (Location) DNS record for the specified domain.
+//
+// Parameters:
+//   - domainName: The fully qualified domain name (FQDN) to query.
+//   - ns: The nameserver to query (as a string, typically an IP address or hostname).
+//
+// Returns:
+//   - locQuery: true if a LOC record is found in the DNS response, false otherwise.
+//
+// This function queries the specified nameserver for a LOC record of the given domain using the global DNS client.
+// If a LOC record is found in the answer section, it returns true. If an error occurs or no LOC record is found, it returns false.
 func checkLOCQuery(domainName string, ns string) (locQuery bool) {
 	locQuery = false
 	loc, _, err := dnsUtils.GetRecordSet(domainName, dns.TypeLOC, []string{ns}, dnsClient)
@@ -339,6 +525,18 @@ func checkLOCQuery(domainName string, ns string) (locQuery bool) {
 	return locQuery
 }
 
+// getAndSaveDomainIPv4 retrieves the IPv4 (A) records for a given domain using the provided nameservers,
+// saves each found IP address to the database, and returns the last IP as a string.
+//
+// Parameters:
+//   - domainName: The fully qualified domain name (FQDN) to query for A records.
+//   - domainNameServers: Slice of nameserver IPs to use for the DNS query.
+//   - domainId: The database identifier for the domain.
+//   - runId: The identifier for the current data collection run.
+//   - db: The database connection.
+//
+// Returns:
+//   - server: The last IPv4 address found (as a string), or an empty string if none found or on error.
 func getAndSaveDomainIPv4(domainName string, domainNameServers []string, domainId int, runId int, db *sql.DB) (server string) {
 	ipv4, err := dnsUtils.GetARecords(domainName, domainNameServers, dnsClient)
 	if err != nil {
@@ -353,6 +551,18 @@ func getAndSaveDomainIPv4(domainName string, domainNameServers []string, domainI
 	return
 }
 
+// getAndSaveDomainIPv6 retrieves the IPv6 (AAAA) records for a given domain using the provided nameservers,
+// saves each found IP address to the database, and does not return any value.
+//
+// Parameters:
+//   - domainName: The fully qualified domain name (FQDN) to query for AAAA records.
+//   - domainNameServers: Slice of nameserver IPs to use for the DNS query.
+//   - domainId: The database identifier for the domain.
+//   - runId: The identifier for the current data collection run.
+//   - db: The database connection.
+//
+// This function queries the specified nameservers for AAAA records of the given domain using the global DNS client.
+// For each IPv6 address found, it saves the address to the database. If an error occurs, it logs the error using manageError.
 func getAndSaveDomainIPv6(domainName string, domainNameServers []string, domainId int, runId int, db *sql.DB) {
 
 	ipv6, err := dnsUtils.GetAAAARecords(domainName, domainNameServers, dnsClient)
@@ -367,6 +577,19 @@ func getAndSaveDomainIPv6(domainName string, domainNameServers []string, domainI
 	}
 }
 
+// getAndSaveDomainSOA retrieves the SOA (Start of Authority) record for a given domain
+// using the provided nameservers, determines if an SOA record exists, and saves the result
+// to the database.
+//
+// Parameters:
+//   - domainName: The fully qualified domain name (FQDN) to query for the SOA record.
+//   - domainNameServers: Slice of nameserver IPs to use for the DNS query.
+//   - domainId: The database identifier for the domain.
+//   - db: The database connection.
+//
+// This function queries the specified nameservers for an SOA record of the given domain
+// using the global DNS client. If an SOA record is found in the answer section, it sets
+// the SOA flag to true. The result is then saved to the database using dbController.SaveSoa.
 func getAndSaveDomainSOA(domainName string, domainNameServers []string, domainId int, db *sql.DB) {
 	/*check soa*/
 	SOA := false
@@ -383,6 +606,22 @@ func getAndSaveDomainSOA(domainName string, domainNameServers []string, domainId
 	dbController.SaveSoa(SOA, domainId, db)
 }
 
+// checkAndSaveDSs retrieves DS (Delegation Signer) records for a given domain, saves them to the database, and returns information about their presence.
+//
+// Parameters:
+//   - domainName: The fully qualified domain name (FQDN) to query for DS records.
+//   - servers: Slice of nameserver IPs to use for the DNS query.
+//   - domainId: The database identifier for the domain.
+//   - runId: The identifier for the current data collection run.
+//   - db: The database connection.
+//
+// Returns:
+//   - dsFound: true if at least one DS record is found, false otherwise.
+//   - dsOk: always false (not evaluated in this function).
+//   - dsRrset: Slice of dns.RR containing the found DS records, or nil if none found.
+//
+// This function queries the specified nameservers for DS records of the given domain using the global DNS client.
+// For each DS record found, it saves the record to the database. If an error occurs, it returns immediately.
 /*
 func checkAndSaveDSs(domain_name string, servers []string, domain_id int, run_id int, db *sql.DB)(ds_found bool, ds_ok bool, ds_rrset []dns.RR){
 	ds_found = false
@@ -407,6 +646,26 @@ func checkAndSaveDSs(domain_name string, servers []string, domain_id int, run_id
 
 }*/
 
+// getAndSaveDNSSECinfo retrieves and stores DNSSEC-related information for a given domain.
+//
+// This function performs the following steps:
+//  1. Queries for DS (Delegation Signer) records for the domain using the configured DNS servers.
+//     - Saves each DS record found to the database.
+//     - If DS records are found, attempts to validate their RRSIG signatures and updates the domain's DS status in the database.
+//  2. Queries for DNSKEY records for the domain using the provided nameservers.
+//     - Saves each DNSKEY record to the database, checking if it matches any DS record.
+//     - Validates RRSIG signatures covering DNSKEY records and updates the domain's DNSKEY status in the database.
+//  3. Checks for NSEC and NSEC3 records to determine non-existence of names and wildcards.
+//     - Saves NSEC/NSEC3 records and their validation status to the database.
+//
+// Parameters:
+//   - domainName: The fully qualified domain name (FQDN) to query.
+//   - domainNameServers: Slice of nameserver IPs to use for DNSKEY and NSEC/NSEC3 queries.
+//   - domainId: The database identifier for the domain.
+//   - runId: The identifier for the current data collection run.
+//   - db: The database connection.
+//
+// This function logs errors using manageError and updates the database with all relevant DNSSEC information.
 func getAndSaveDNSSECinfo(domainName string, domainNameServers []string, domainId int, runId int, db *sql.DB) {
 
 	/*check DNSSEC*/
@@ -698,19 +957,33 @@ func getAndSaveDNSSECinfo(domainName string, domainNameServers []string, domainI
 	}
 }
 
-// Collects info from a single domain (ran by a routine) and save it to the databses.
+// collectSingleDomainInfo collects DNS and DNSSEC information for a single domain and saves it to the database.
+//
+// This function performs the following steps:
+//  1. Saves the domain in the database and obtains its ID.
+//  2. Retrieves the NS records for the domain and processes each nameserver:
+//     - Checks availability and authority of the nameserver.
+//     - Saves the nameserver in the database.
+//     - Retrieves and saves A and AAAA records for the nameserver.
+//     - If the nameserver is available and authoritative, performs additional checks (recursivity, EDNS, TCP, zone transfer, LOC query).
+//  3. If at least one IPv4 address for a nameserver is found, queries the domain for A, AAAA, SOA, and DNSSEC records using those nameservers and saves the results.
+//
+// Parameters:
+//   - domainName: The fully qualified domain name (FQDN) to process.
+//   - runId: The identifier for the current data collection run.
+//   - db: The database connection.
 func collectSingleDomainInfo(domainName string, runId int, db *sql.DB) {
 
 	var domainId int
 	// Create domain and save it in database
 	domainId = dbController.SaveDomain(domainName, runId, db)
 
-	/*Obtener NS del dominio*/
+	// Obtain NS records for the domain
 	var domainNameServers []string
 	var domainNameServers4 []string
 
 	{ //Check NSs of the domain
-		/*Obtener NSs del dominio*/
+		// Obtain NS records for the domain
 		var domainsNameservers = getDomainsNameservers(domainName)
 
 		for _, nameserver := range domainsNameservers { //for each nameserver of the current domain_name
@@ -768,13 +1041,13 @@ func collectSingleDomainInfo(domainName string, runId int, db *sql.DB) {
 						zoneTransfer := false
 						if available {
 							// edns, recursivity, tcp, zone_transfer, loc_query
-							// Recursividad y EDNS
+							// Recursivity and EDNS
 							recursivity, EDNS = checkRecursivityAndEDNS(domainName, ns.Ns)
 							// TCP
 							TCP = checkTCP(domainName, ns.Ns)
 							// Zone transfer
 							zoneTransfer = checkZoneTransfer(domainName, ns.Ns)
-							// Wrong Queries (tipos extraños como loc)
+							// Wrong Queries (unusual types, ex: loc)
 							locQuery = checkLOCQuery(domainName, ns.Ns)
 						}
 						dbController.SaveNS(recursivity, EDNS, TCP, zoneTransfer, locQuery, nameserverId, db)
@@ -798,11 +1071,24 @@ func collectSingleDomainInfo(domainName string, runId int, db *sql.DB) {
 
 }
 
-// Invoca a la consulta SOA para cada IP con ambos protocolos
+// collectAvailabilityData performs SOA queries for each root server using both UDP and TCP protocols.
+//
+// This function iterates over the list of DNS root servers and, for each server, performs an SOA query
+// using both IPv4 and (optionally) IPv6 addresses with UDP and TCP. The results, including the duration
+// and success status of each query, are saved to the database. The function prints the outcome of each
+// query to the standard output.
+//
+// Parameters:
+//   - runId: The identifier for the current data collection run.
+//   - db: The database connection.
+//
+// Note:
+//   - The IPv6 queries are commented out by default, as some environments may not support IPv6 connectivity.
+//     Uncomment the relevant section to enable IPv6 SOA queries if supported.
 func collectAvailabilityData(runId int, db *sql.DB) {
 	for _, server := range rootServers {
 		for _, protocol := range []string{"udp", "tcp"} {
-			// Realizar consulta SOA usando IPv4
+			// Perform SOA query using IPv4
 			success, duration := querySOA(server.IPv4, protocol, dnsClient)
 
 			availabilityResult := dbController.AvailabilityResult{
@@ -813,7 +1099,7 @@ func collectAvailabilityData(runId int, db *sql.DB) {
 				Correct:   success,
 			}
 
-			// Guardamos los datos de la duración de la consulta en la database
+			// Save the query duration and result to the database
 			dbController.SaveAvailabilityResults(runId, availabilityResult, db)
 
 			if success {
@@ -822,65 +1108,78 @@ func collectAvailabilityData(runId int, db *sql.DB) {
 				fmt.Printf("Failed SOA query for %s (IPv4) with %s\n", server.Name, protocol)
 			}
 
-			/* Realizar consulta SOA usando IPv6
-			/* No la estoy ejecutando ya que mi proveedor no soporta conexión IPv6,
-			   pero debería funcionar en uno que si soporta
+			/*
+				// Perform SOA query using IPv6
+				// Uncomment the following block if your environment supports IPv6 connectivity.
 
-			success, duration = querySOA(server.IPv6, protocol, dnsClient)
+				success, duration = querySOA(server.IPv6, protocol, dnsClient)
 
-			availabilityResult = dbController.AvailabilityResult{
-				RunID:     runId,
-				Server:    server.Name,
-				Transport: protocol,
-				Duration:  duration,
-				Correct:   success,
-			}
+				availabilityResult = dbController.AvailabilityResult{
+					RunID:     runId,
+					Server:    server.Name,
+					Transport: protocol,
+					Duration:  duration,
+					Correct:   success,
+				}
 
-			dbController.SaveAvailabilityResults(runId, availabilityResult, db)
+				dbController.SaveAvailabilityResults(runId, availabilityResult, db)
 
-			if success {
-				fmt.Printf("Successful SOA query for %s (IPv6) with %s\n", server.Name, protocol)
-			} else {
-				fmt.Printf("Failed SOA query for %s (IPv6) with %s\n", server.Name, protocol)
-			}
+				if success {
+					fmt.Printf("Successful SOA query for %s (IPv6) with %s\n", server.Name, protocol)
+				} else {
+					fmt.Printf("Failed SOA query for %s (IPv6) with %s\n", server.Name, protocol)
+				}
 			*/
 		}
 	}
 }
 
-// Manda la consulta SOA
+// querySOA sends a DNS SOA (Start of Authority) query to the specified server using the given protocol.
+//
+// This function constructs and sends a DNS query for the SOA record of the root zone (".") to the provided server
+// using the specified transport protocol ("udp" or "tcp") and the given DNS client. It measures the duration of the query,
+// and returns whether a valid SOA record was received along with the elapsed time in seconds.
+//
+// Parameters:
+//   - server:   The IP address (IPv4 or IPv6) of the DNS server to query.
+//   - protocol: The transport protocol to use ("udp" or "tcp").
+//   - c:        The DNS client to use for the query.
+//
+// Returns:
+//   - bool:     true if an SOA record was received in the response, false otherwise.
+//   - float64:  The duration of the query in seconds.
 func querySOA(server string, protocol string, c *dns.Client) (bool, float64) {
-	// Configurar el timeout
+	// Set timeout
 	c.Timeout = 4 * time.Second
 
-	// Establecer el protocolo (UDP o TCP)
+	//
 	c.Net = protocol
 
-	// Crear el mensaje de consulta
+	// Set protocol (UDP or TCP)
 	m := new(dns.Msg)
 	m.SetQuestion(".", dns.TypeSOA)
 
-	startTime := time.Now() // Iniciar temporizador
+	startTime := time.Now() // Start timer
 
-	// Formatear la dirección correctamente
+	// Format the address correctly
 	address := server
 	if isIPv6(server) {
-		address = "[" + server + "]" // Agregar corchetes para direcciones IPv6
+		address = "[" + server + "]" // Add brackets for IPv6 addresses
 		fmt.Print("Esta es IPv6: ")
 	} else {
 		fmt.Print("Esta es IPv4: ")
 	}
 
-	// Realizar la consulta
+	// Perform the query
 	r, _, err := c.Exchange(m, address+":53")
-	duration := time.Since(startTime).Seconds() // Calcular duración
+	duration := time.Since(startTime).Seconds() // Calculate duration
 
 	if err != nil {
 		fmt.Printf("Error querying %s with %s: %v\n", server, protocol, err)
-		return false, duration // Retornar duración si hay error
+		return false, duration // Return duration if error
 	}
 
-	// Verificar si se recibió un SOA
+	// Check if an SOA record was received
 	for _, ans := range r.Answer {
 		if _, ok := ans.(*dns.SOA); ok {
 			return true, duration // Consulta exitosa
@@ -891,11 +1190,31 @@ func querySOA(server string, protocol string, c *dns.Client) (bool, float64) {
 	return false, duration // No se recibió un SOA
 }
 
-// Función para verificar si una dirección es IPv6
+// isIPv6 checks if the provided address string is an IPv6 address.
+//
+// Parameters:
+//   - address: A string representing the IP address to check.
+//
+// Returns:
+//   - bool: Returns true if the address is IPv6, false otherwise.
+//
+// This function parses the input string as an IP address and determines
+// if it is IPv6 by checking if the result of To4() is nil.
 func isIPv6(address string) bool {
 	return net.ParseIP(address).To4() == nil
 }
 
+// isIPInDontProbeList checks if the given IP address is contained within any of the networks
+// specified in the global dontProbeList.
+//
+// Parameters:
+//   - ip: net.IP representing the IP address to check.
+//
+// Returns:
+//   - bool: true if the IP is found in the dontProbeList, false otherwise.
+//
+// This function iterates over all networks in dontProbeList and returns true as soon as it finds
+// a network that contains the provided IP address. If no match is found, it returns false.
 func isIPInDontProbeList(ip net.IP) bool {
 	var ipnet *net.IPNet
 	for _, ipnet = range dontProbeList {

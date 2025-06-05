@@ -16,12 +16,24 @@ import (
 	"github.com/oschwald/geoip2-golang"
 )
 
+// GeoipDB holds references to the GEO IP country and ASN databases.
 type GeoipDB struct {
-	CountryDb *geoip2.Reader
-	AsnDb     *geoip2.Reader
+	CountryDb *geoip2.Reader // GEO IP database for country information
+	AsnDb     *geoip2.Reader // GEO IP database for ASN (Autonomous System Number) information
 }
 
-// Initialize GEO IP databases
+// InitGeoIP initializes and returns a GeoipDB instance with country and ASN databases loaded.
+//
+// Parameters:
+// - geoipPath: Path to the directory containing the GEO IP database files.
+// - geoipCountryDbName: Filename of the country GEO IP database.
+// - geoipAsnDbName: Filename of the ASN GEO IP database.
+// - geoipLicenseKey: License key used to download the GEO IP database if not present.
+//
+// Returns:
+// - A pointer to a GeoipDB struct containing loaded country and ASN databases.
+//
+// Note: If there is an error loading the databases, it is printed to standard output.
 func InitGeoIP(geoipPath string, geoipCountryDbName string, geoipAsnDbName string, geoipLicenseKey string) *GeoipDB {
 	var err error
 	checkDatabases(geoipPath, geoipCountryDbName, geoipAsnDbName, geoipLicenseKey)
@@ -37,6 +49,13 @@ func InitGeoIP(geoipPath string, geoipCountryDbName string, geoipAsnDbName strin
 	return geoipDb
 }
 
+// CloseGeoIP closes both the country and ASN GEO IP databases.
+//
+// Parameters:
+// - geoipDB: Pointer to a GeoipDB instance whose databases will be closed.
+//
+// Notes:
+// - If an error occurs while closing either database, the error message is printed to standard output.
 func CloseGeoIP(geoipDB *GeoipDB) {
 	err := geoipDB.CountryDb.Close()
 	if err != nil {
@@ -48,6 +67,21 @@ func CloseGeoIP(geoipDB *GeoipDB) {
 	}
 }
 
+// downloadGeoIp downloads the GeoLite2 ASN and Country databases from MaxMind and saves them to the specified directory.
+//
+// Parameters:
+// - licenseKey: MaxMind license key required to download the databases.
+// - geoipPath: Path to the directory where the databases will be stored. Created if it does not exist.
+// - geoipAsnFilename: Filename to save the ASN database as.
+// - geoipCountryFilename: Filename to save the Country database as.
+//
+// Returns:
+// - true if the download process completes (even if some errors occurred and were only printed).
+//
+// Notes:
+// - The function ensures the target directory exists.
+// - Downloads are performed concurrently using goroutines and a WaitGroup.
+// - Errors during directory creation or file download are printed to standard output.
 func downloadGeoIp(licenseKey string, geoipPath string, geoipAsnFilename string, geoipCountryFilename string) bool {
 
 	//check if directory exists (create if not exists)
@@ -71,6 +105,21 @@ func downloadGeoIp(licenseKey string, geoipPath string, geoipAsnFilename string,
 
 	return true
 }
+
+// downloadFile retrieves a file from a given URL, saves it as a .tar.gz archive,
+// extracts the required .mmdb file from the archive, and moves it to the specified destination path.
+//
+// Parameters:
+// - url: The URL to download the .tar.gz file from.
+// - filepath: Destination path (without extension) where the extracted .mmdb file will be saved.
+// - wg: A pointer to a sync.WaitGroup used to synchronize concurrent downloads.
+//
+// Notes:
+// - The downloaded file is saved temporarily with a .tar.gz extension and removed after extraction.
+// - The archive is expected to contain a MaxMind GeoLite2 database (ASN or Country).
+// - The extracted .mmdb file is moved to the destination path.
+// - Errors encountered during the process are fatal and terminate the program.
+// - The function signals completion by calling wg.Done().
 func downloadFile(url string, filepath string, wg *sync.WaitGroup) {
 	defer wg.Done()
 	// Get the data
@@ -120,7 +169,24 @@ func downloadFile(url string, filepath string, wg *sync.WaitGroup) {
 	return
 }
 
-// Checks if databases exists, if exists, check if they are updated, return (bool)databases_found and (bool)databases_updated
+// checkDatabases verifies the presence and freshness of the GEO IP databases (Country and ASN).
+// If any database is missing or outdated (older than 1 month), it attempts to download updated versions.
+//
+// Parameters:
+// - geoipPath: Path to the directory containing the GEO IP database files.
+// - geoipCountryDbName: Filename of the country GEO IP database.
+// - geoipAsnDbName: Filename of the ASN GEO IP database.
+// - geoipLicenseKey: MaxMind license key used for downloading the databases if needed.
+//
+// Returns:
+// - databasesFound: true if both databases are present (either originally or after download).
+// - databasesUpdated: true if both databases are up-to-date.
+//
+// Notes:
+// - This function uses file modification time to determine whether a database is outdated.
+// - If outdated or missing, it calls downloadGeoIp to fetch the latest databases.
+// - Uses a `goto` label to check both databases sequentially.
+// - Prints status messages to standard output.
 func checkDatabases(geoipPath string, geoipCountryDbName string, geoipAsnDbName string, geoipLicenseKey string) (bool, bool) {
 	goAgain := true
 	file := geoipPath + "/" + geoipCountryDbName
@@ -156,7 +222,18 @@ func checkDatabases(geoipPath string, geoipCountryDbName string, geoipAsnDbName 
 	return databasesFound, databasesUpdated
 }
 
-// Finds and return the Country database
+// getGeoIpCountryDB attempts to open the specified GeoLite2 Country database file.
+//
+// Parameters:
+// - file: Full path to the GeoLite2 Country database (.mmdb) file.
+//
+// Returns:
+// - A pointer to a geoip2.Reader if successful.
+// - An error if the file cannot be opened.
+//
+// Notes:
+// - Prints a success message to standard output if the database is opened successfully.
+// - Prints an error message if the database cannot be opened.
 func getGeoIpCountryDB(file string) (*geoip2.Reader, error) {
 	gi, err := geoip2.Open(file)
 	if err != nil {
@@ -167,7 +244,18 @@ func getGeoIpCountryDB(file string) (*geoip2.Reader, error) {
 	return gi, err
 }
 
-// Finds and return the ASN database
+// getGeoIpAsnDB attempts to open the specified GeoLite2 ASN database file.
+//
+// Parameters:
+// - file: Full path to the GeoLite2 ASN database (.mmdb) file.
+//
+// Returns:
+// - A pointer to a geoip2.Reader if successful.
+// - An error if the file cannot be opened.
+//
+// Notes:
+// - Prints a success message to standard output if the database is opened successfully.
+// - Prints an error message if the database cannot be opened.
 func getGeoIpAsnDB(file string) (*geoip2.Reader, error) {
 	gi, err := geoip2.Open(file)
 	if err != nil {
@@ -178,7 +266,18 @@ func getGeoIpAsnDB(file string) (*geoip2.Reader, error) {
 	return gi, err
 }
 
-// Finds and returns the conuntry of the given ip
+// GetIPCountry returns the ISO country code for a given IP address using the provided GeoLite2 Country database.
+//
+// Parameters:
+// - ip: A string representing the IP address to be geolocated.
+// - giCountryDb: A pointer to a geoip2.Reader instance for the GeoLite2 Country database.
+//
+// Returns:
+// - The ISO 3166-1 alpha-2 country code (e.g., "US", "CL") associated with the IP address.
+// - An empty string if the IP is invalid or the lookup fails.
+//
+// Notes:
+// - If the IP cannot be parsed or the database lookup fails, an error message is printed and an empty string is returned.
 func GetIPCountry(ip string, giCountryDb *geoip2.Reader) (country string) {
 	ipAddr := net.ParseIP(ip)
 	var ctry, err = giCountryDb.Country(ipAddr)
@@ -190,7 +289,19 @@ func GetIPCountry(ip string, giCountryDb *geoip2.Reader) (country string) {
 	return country
 }
 
-// Finds and returns the ASN of the given ip
+// GetIPASN returns the Autonomous System Number (ASN) for a given IP address using the GeoLite2 ASN database.
+//
+// Parameters:
+// - ip: A string representing the IP address to be analyzed.
+// - giAsnDb: A pointer to a geoip2.Reader instance for the GeoLite2 ASN database.
+//
+// Returns:
+// - A string representation of the Autonomous System Number associated with the IP address.
+// - If the lookup fails, an empty string may be returned.
+//
+// Notes:
+// - This function ignores lookup errors silently. You may want to handle them for debugging or logging purposes.
+// - The ASN is returned as a string for convenience in downstream processing (e.g., JSON encoding).
 func GetIPASN(ip string, giAsnDb *geoip2.Reader) (asn string) {
 	ipAddr := net.ParseIP(ip)
 	var asnum, _ = giAsnDb.ASN(ipAddr)

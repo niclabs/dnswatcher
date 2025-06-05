@@ -11,7 +11,9 @@ import (
 	"path/filepath"
 )
 
-//Auxiliar function to read lines from a file path. return a string array with all the lines in the file and an error if fails ->(lines, error)
+// ReadLines reads all lines from the file at the given path and returns them as a slice of strings.
+// It returns an error if the file cannot be read.
+// This utility is used throughout the repository to load configuration or data files line by line.
 func ReadLines(path string) ([]string, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -26,7 +28,9 @@ func ReadLines(path string) ([]string, error) {
 	return lines, scanner.Err()
 }
 
-//Creates a file given a path and a name for the file
+// CreateFile creates a file with the specified filename inside the given filepath.
+// If the directory does not exist, it will be created.
+// Returns a pointer to the created file and an error if the operation fails.
 func CreateFile(filepath string, filename string) (fo *os.File, err error) {
 	InitFolder(filepath)
 	if err != nil {
@@ -36,7 +40,8 @@ func CreateFile(filepath string, filename string) (fo *os.File, err error) {
 	return os.Create(filepath + "/" + filename)
 }
 
-//Creates (if dont exists) a folder given a name
+// InitFolder creates a folder with the specified name if it does not already exist.
+// Returns an error if the directory cannot be created or accessed.
 func InitFolder(folder_name string) error {
 	var err error
 	if _, err = os.Stat(folder_name); os.IsNotExist(err) {
@@ -45,14 +50,16 @@ func InitFolder(folder_name string) error {
 	return err
 }
 
-func ExtractTarGz(gzipStream io.Reader) (string){
+// ExtractTarGz extracts the contents of a .tar.gz stream to the current directory.
+// Returns the name of the last directory extracted, or an error if extraction fails.
+func ExtractTarGz(gzipStream io.Reader) string {
 	uncompressedStream, err := gzip.NewReader(gzipStream)
 	if err != nil {
 		log.Fatal("ExtractTarGz: NewReader failed")
 	}
 
 	tarReader := tar.NewReader(uncompressedStream)
-	folderName:= ""
+	folderName := ""
 	for true {
 		header, err := tarReader.Next()
 
@@ -65,38 +72,39 @@ func ExtractTarGz(gzipStream io.Reader) (string){
 		}
 
 		switch header.Typeflag {
-			case tar.TypeDir:
-				if _, err := os.Stat(header.Name); os.IsNotExist(err) {
-					if err := os.Mkdir(header.Name, 0755); err != nil {
-						log.Fatalf("ExtractTarGz: Mkdir() failed: %s", err.Error())
-					}
+		case tar.TypeDir:
+			if _, err := os.Stat(header.Name); os.IsNotExist(err) {
+				if err := os.Mkdir(header.Name, 0755); err != nil {
+					log.Fatalf("ExtractTarGz: Mkdir() failed: %s", err.Error())
 				}
-				folderName = header.Name
-			case tar.TypeReg:
-				outFile, err := os.Create(header.Name)
-				if err != nil {
-					log.Fatalf("ExtractTarGz: Create() failed: %s", err.Error())
-				}
-				if _, err := io.Copy(outFile, tarReader); err != nil {
-					log.Fatalf("ExtractTarGz: Copy() failed: %s", err.Error())
-				}
-				err = outFile.Close()
-				if err != nil {
-					log.Fatalf("ExtractTarGz: ", err.Error())
-				}
+			}
+			folderName = header.Name
+		case tar.TypeReg:
+			outFile, err := os.Create(header.Name)
+			if err != nil {
+				log.Fatalf("ExtractTarGz: Create() failed: %s", err.Error())
+			}
+			if _, err := io.Copy(outFile, tarReader); err != nil {
+				log.Fatalf("ExtractTarGz: Copy() failed: %s", err.Error())
+			}
+			err = outFile.Close()
+			if err != nil {
+				log.Fatalf("ExtractTarGz: ", err.Error())
+			}
 
-			default:
-				log.Fatalf(
-					"ExtractTarGz: uknown type: %s in %s",
+		default:
+			log.Fatalf(
+				"ExtractTarGz: uknown type: %s in %s",
 				header.Typeflag,
 				header.Name)
 		}
-
 
 	}
 	return folderName
 }
 
+// RemoveFolderContents deletes all files and subdirectories within the specified directory,
+// but does not remove the directory itself. Returns an error if any operation fails.
 func RemoveFolderContents(dir string) error {
 	d, err := os.Open(dir)
 	if err != nil {
@@ -116,15 +124,15 @@ func RemoveFolderContents(dir string) error {
 	return nil
 }
 
-
-
-
 /*
    GoLang: os.Rename() give error "invalid cross-device link" for Docker container with Volumes.
    MoveFile(source, destination) will work moving file between folders
 	https://gist.github.com/var23rav/23ae5d0d4d830aff886c3c970b8f6c6b
 */
 
+// MoveFile moves a file from sourcePath to destPath by copying its contents and then deleting the original file.
+// This is useful when os.Rename fails due to "invalid cross-device link" errors, such as with Docker volumes.
+// Returns an error if the source file cannot be opened, the destination file cannot be created, the copy fails, or the original file cannot be deleted.
 func MoveFile(sourcePath, destPath string) error {
 	inputFile, err := os.Open(sourcePath)
 	if err != nil {
