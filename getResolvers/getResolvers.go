@@ -2,24 +2,42 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"github.com/korylprince/ipnetgen"
+	"github.com/miekg/dns"
+	"github.com/oschwald/geoip2-golang"
 	"math"
 	"net"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
-	"github.com/miekg/dns"
-	"bytes"
-	"os/exec"
 	"sync"
 	"time"
-	"github.com/oschwald/geoip2-golang"
 )
 
+// giasn is a GeoIP2 reader used to lookup ASN and IP geolocation data.
 var giasn *geoip2.Reader
 
+// ip2int converts an IP address (IPv4 or IPv6) to a 32-bit unsigned integer.
+// For IPv6 addresses, it uses only the last 4 bytes (assuming IPv4-mapped IPv6 addresses).
+//
+// Parameters:
+// - ip: The net.IP object to convert.
+//
+// Returns:
+// - A uint32 representing the IP address in big-endian byte order.
+//
+// Notes:
+// - If the IP is IPv6, the function reads bytes 12 to 16 assuming an IPv4-mapped format (::ffff:a.b.c.d).
+//
+// Example:
+//
+//		ip := net.ParseIP("192.0.2.1")
+//		intIP := ip2int(ip)
+//	 returns 3221225985
 func ip2int(ip net.IP) uint32 {
 	if len(ip) == 16 {
 		return binary.BigEndian.Uint32(ip[12:16])
@@ -27,12 +45,48 @@ func ip2int(ip net.IP) uint32 {
 	return binary.BigEndian.Uint32(ip)
 }
 
+// int2ip converts a 32-bit unsigned integer to a net.IP IPv4 address.
+//
+// Parameters:
+// - nn: A uint32 representing the IPv4 address in big-endian byte order.
+//
+// Returns:
+// - A net.IP object representing the IPv4 address.
+//
+// Example:
+//
+//		ip := int2ip(3221225985)
+//		fmt.Println(ip.String())
+//	  prints "192.0.2.1"
 func int2ip(nn uint32) net.IP {
 	ip := make(net.IP, 4)
 	binary.BigEndian.PutUint32(ip, nn)
 	return ip
 }
 
+// readLines reads a text file and returns its contents as a slice of strings,
+// where each element corresponds to a line in the file.
+//
+// Parameters:
+// - path: A string representing the file path to read from.
+//
+// Returns:
+// - A slice of strings ([]string), each representing a line in the file.
+// - An error if the file cannot be opened or if a scanning error occurs.
+//
+// Notes:
+// - The file is read line by line using a buffered scanner.
+// - The function ensures the file is properly closed using defer.
+//
+// Example:
+//
+//	lines, err := readLines("data.txt")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	for _, line := range lines {
+//	    fmt.Println(line)
+//	}
 func readLines(path string) ([]string, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -48,9 +102,16 @@ func readLines(path string) ([]string, error) {
 	return lines, scanner.Err()
 }
 
+// TotalTime stores the accumulated time from concurrent operations.
 var TotalTime int
+
+// mutexTT protects access to TotalTime in concurrent contexts.
 var mutexTT *sync.Mutex
 
+// main is the entry point of the DNS Watcher application.
+// It reads IP data from a file, initializes the GeoIP ASN database,
+// processes each IP concurrently to gather resolver information,
+// and measures the total execution time.
 func main() {
 	//inputFile := "CLparsed01082017.txt"
 	inputFile := "port-53_2017-07-12.csv"
@@ -63,7 +124,7 @@ func main() {
 	t := time.Now()
 	fmt.Println(t, concurrency, "threads")
 
-	/*init geoip asn db*/
+	// init geoip asn db
 	giasn, err = getGeoIpAsnDB()
 	if err != nil {
 		fmt.Println(err.Error())
@@ -73,14 +134,13 @@ func main() {
 	wg := sync.WaitGroup{}
 	wg.Add(concurrency)
 	mutexTT = &sync.Mutex{}
-	/*Init n routines to read the queue*/
+	//Init n routines to read the queue
 	for i := 0; i < concurrency; i++ {
 		go func() {
 			j := 0
 			totalTime := 0
 			for ip := range getDataQueue {
 				t2 := time.Now()
-				//fmt.Println("Looking for:",ip)
 				lookForResolver(ip)
 				duration := time.Since(t2)
 				mutexTT.Lock()
@@ -91,7 +151,7 @@ func main() {
 			wg.Done()
 		}()
 	}
-	/*fill the queue with data*/
+	//fill the queue with data
 	for _, line := range lines {
 		//if(line=="") {
 		//	continue
@@ -108,13 +168,31 @@ func main() {
 			getDataQueue <- ip.String()
 		}
 	}
-	/*Close the queue*/
+	//Close the queue
 	close(getDataQueue)
-	/*wait for routines to finish*/
+	//wait for routines to finish
 	wg.Wait()
 	TotalTime = (int)(time.Since(t).Nanoseconds())
 
 }
+
+// getCIDR parses a line containing an IP address and a count, and returns a CIDR notation string.
+//
+// Parameters:
+// - line: A string expected to contain an IP address and optionally a count, separated by a comma.
+//
+// Returns:
+// - A string in CIDR format (e.g., "192.0.2.0/24").
+//
+// Behavior:
+// - If only the IP is provided, defaults the count to 1.
+// - For IPv4 addresses, the count is converted to a subnet mask using log2(count).
+// - For IPv6 addresses, the count is assumed to already represent the prefix length.
+//
+// Example input lines:
+//
+//	"192.168.1.0,256" → "192.168.1.0/24"
+//	"2001:db8::,64"   → "2001:db8::/64"
 func getCIDR(line string) string {
 	l := strings.Split(line, ",")
 	ips := ""
@@ -147,6 +225,14 @@ func getCIDR(line string) string {
 	return cidr
 }
 
+// getGeoIpAsnDB opens the MaxMind GeoLite2 ASN database from the default path.
+//
+// Returns:
+// - A pointer to a geoip2.Reader if successful.
+// - An error if the database file cannot be opened.
+//
+// The database file path is hardcoded as: "/usr/share/GeoIP/GeoLite2-ASN.mmdb".
+// This function is typically used to enable IP-to-ASN lookups.
 func getGeoIpAsnDB() (*geoip2.Reader, error) {
 	file := "/usr/share/GeoIP/GeoLite2-ASN.mmdb"
 	gi, err := geoip2.Open(file)
@@ -157,6 +243,17 @@ func getGeoIpAsnDB() (*geoip2.Reader, error) {
 	return gi, err
 }
 
+// lookForResolver queries a DNS resolver at the given IP address to gather DNS and ASN information.
+//
+// It performs the following steps:
+//   - Sends a DNS A record query for "www.hola.com" to check if the resolver is responsive and supports recursion.
+//   - If the resolver replies positively, attempts to perform a reverse DNS lookup on the IP.
+//   - Retrieves ASN information using the global GeoIP ASN database reader (giasn).
+//   - Sends a CHAOS class TXT query for "version.bind." to get the resolver's version string if available.
+//   - Prints a CSV-formatted line with the IP, resolver version (if any), reverse DNS name, ASN number, ASN organization, and additional data.
+//
+// Parameters:
+//   - ip: The IP address of the DNS resolver to query, as a string.
 func lookForResolver(ip string) {
 	//random := strconv.FormatInt(rand.Int63(),10)
 	line := "www.hola.com"
@@ -171,7 +268,7 @@ func lookForResolver(ip string) {
 	}
 	if msg != nil {
 		if msg.Rcode != dns.RcodeRefused && msg.RecursionAvailable {
-			//fmt.Println("----------------------------------------------------------------")
+			//fmt.Println("-----------------------------------------")
 			//fmt.Println(ip,msg.Answer)
 			data := getName(ip)
 			name, err := net.LookupAddr(ip)
@@ -180,7 +277,7 @@ func lookForResolver(ip string) {
 
 			}
 
-			/*get asn*/
+			//get asn
 			asn := ""
 			asnName := ""
 			ipNet := net.ParseIP(ip)
@@ -196,7 +293,7 @@ func lookForResolver(ip string) {
 				asn = strings.Split(as, " ")[0]
 				asn_name = strings.SplitAfterN(as, " ", 2)[1]
 			}else{
-				fmt.Println("ASN NIL!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",ip)
+				fmt.Println("ASN NIL",ip)
 			}*/
 
 			m2 := new(dns.Msg)
@@ -221,6 +318,21 @@ func lookForResolver(ip string) {
 	}
 }
 
+// getName performs a WHOIS query for the given IP address and extracts
+// relevant network ownership information.
+//
+// The function:
+//   - Executes a WHOIS query via the helper function RunWHOIS.
+//   - Parses the WHOIS response line by line to extract fields like:
+//     CIDR block, Organization ID (OrgId), Owner ID (ownerid), inetnum,
+//     Organization Name (OrgName), and Owner.
+//   - Returns a comma-separated string with inetnum, OwnerId, and Owner.
+//
+// Parameters:
+//   - ip: The IP address to query WHOIS information for.
+//
+// Returns:
+//   - A string summarizing inetnum, OwnerId, and Owner fields from the WHOIS response.
 func getName(ip string) string {
 	//addr,err :=dns.ReverseAddr(ip)
 	//if(err!=nil) {
@@ -314,6 +426,21 @@ func getName(ip string) string {
 	*/
 }
 
+// RunWHOIS performs a WHOIS lookup for the given IP address.
+//
+// The function:
+//   - Validates the IP address format.
+//   - Queries the IANA WHOIS server (whois.iana.org) to find the
+//     authoritative WHOIS server for the IP address.
+//   - Defaults to "whois.lacnic.net" if no referral is found.
+//   - Queries the referred WHOIS server to get detailed registration data.
+//   - Returns the raw WHOIS response as a bytes.Buffer.
+//
+// Parameters:
+//   - ipAddr: The IP address to query WHOIS information for.
+//
+// Returns:
+//   - A bytes.Buffer containing the full WHOIS response from the authoritative server.
 func RunWHOIS(ipAddr string) bytes.Buffer {
 
 	// Parse IP to make sure it is valid
@@ -332,9 +459,7 @@ func RunWHOIS(ipAddr string) bytes.Buffer {
 	// Run whois on IANA Server and get response
 	ianaResponse := runWhoisCommand("-h", ianaServer, ipAddr)
 
-	/**
-	    Try to get the whois server to query from IANA Response
-	**/
+	//Try to get the whois server to query from IANA Response
 
 	// Default whois server in case we cannot find another one IANA
 	whoisServer := "whois.lacnic.net"
@@ -364,7 +489,17 @@ func RunWHOIS(ipAddr string) bytes.Buffer {
 	return whois
 }
 
-// Run whois command and return buffer
+// runWhoisCommand executes the system "whois" command with the given arguments.
+//
+// It runs the "whois" command line tool passing the provided arguments,
+// captures both standard output and standard error,
+// and returns the combined output as a bytes.Buffer.
+//
+// Parameters:
+//   - args: A variadic string slice representing the arguments to pass to the "whois" command.
+//
+// Returns:
+//   - A bytes.Buffer containing the output (stdout and stderr) of the "whois" command execution.
 func runWhoisCommand(args ...string) bytes.Buffer {
 	// Store output on buffer
 	var out bytes.Buffer
