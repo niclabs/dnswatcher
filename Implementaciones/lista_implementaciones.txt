@@ -22,10 +22,11 @@ Descripción: Latencia de respuesta: mide el tiempo en recibir una respuesta a u
 
 
 4. Cumplimiento de estándares DNS y DNSSEC
-Estado: En proceso
+Estado: Implementado -> al pasar a OBS hay que alinearlo con geolite
 Referencia RSSAC047: 5.3 - RSI Correctness
-Descripción: Evalúa si las respuestas recibidas son correctas conforme al contenido del root zone y validación DNSSEC.
-¿Cómo?: Consultas a registros conocidos (SOA, NS, DNSKEY, DS) y negativos (NXDOMAIN aleatorio), validando RRSIG, NSEC y flags según los criterios definidos en el paper.
+Descripción: Evalúa si las respuestas de los servidores cumplen los estándares del root zone y están correctamente firmadas con DNSSEC.
+Se realizan consultas a registros clave (SOA, NS, DNSKEY) y consultas negativas (NXDOMAIN aleatorio). Para cada respuesta se revisa que incluya firmas RRSIG, registros NSEC/NSEC3 y que tenga las banderas correctas. La base actual mide estos elementos por IP y transporte (UDP/TCP) y calcula el porcentaje de respuestas correctas.
+Esta parte se implementó como prueba de concepto para validar la lógica básica y servirá de base para integrar en la herramienta final, donde se complementará con validación criptográfica real y comparación con el archivo root zone.
 
 
 5. Tasa de éxito/fallo en DNSSEC

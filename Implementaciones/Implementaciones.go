@@ -50,6 +50,54 @@ func measureLatency(ip string, useTCP bool) (bool, time.Duration) {
 	return err == nil, latency
 }
 
+func validateCorrectness(ip, domain string, useTCP bool) bool {
+	client := &dns.Client{Timeout: 4 * time.Second}
+	if useTCP {
+		client.Net = "tcp"
+	} else {
+		client.Net = "udp"
+	}
+
+	m := new(dns.Msg)
+	m.SetQuestion(dns.Fqdn(domain), dns.TypeDNSKEY)
+	m.SetEdns0(1220, true)
+
+	r, _, err := client.Exchange(m, ip+":53")
+	if err != nil {
+		return false
+	}
+
+	hasRRSIG := false
+	for _, rr := range r.Answer {
+		if rr.Header().Rrtype == dns.TypeRRSIG {
+			hasRRSIG = true
+			break
+		}
+	}
+	if !hasRRSIG {
+		return false
+	}
+
+	if r.Rcode == dns.RcodeNameError {
+		hasSOA, hasNSEC := false, false
+		for _, rr := range r.Ns {
+			if rr.Header().Rrtype == dns.TypeSOA {
+				hasSOA = true
+			}
+			if rr.Header().Rrtype == dns.TypeNSEC || rr.Header().Rrtype == dns.TypeNSEC3 {
+				hasNSEC = true
+			}
+		}
+		return hasSOA && hasNSEC
+	}
+
+	if !r.Authoritative {
+		return false
+	}
+
+	return true
+}
+
 func main() {
 	file, err := os.Open("input-example.txt")
 	if err != nil {
@@ -76,6 +124,9 @@ func main() {
 
 	ipv4UDPCount, ipv4TCPCount := 0, 0
 	ipv6UDPCount, ipv6TCPCount := 0, 0
+
+	correctCount := 0
+	totalCount := 0
 
 	var latenciasUDP, latenciasTCP []time.Duration
 
@@ -119,6 +170,19 @@ func main() {
 				ipv4TCPCount++
 				latenciasTCP = append(latenciasTCP, latencyTCP)
 			}
+
+			// Validación DNSSEC por UDP
+			if validateCorrectness(ip, domain, false) {
+				correctCount++
+			}
+			totalCount++
+
+			// Validación DNSSEC por TCP
+			if validateCorrectness(ip, domain, true) {
+				correctCount++
+			}
+			totalCount++
+
 		}
 
 		ipv6UDP, ipv6TCP := 0, 0
@@ -141,6 +205,18 @@ func main() {
 				ipv6TCPCount++
 				latenciasTCP = append(latenciasTCP, latencyTCP)
 			}
+
+			// Validación DNSSEC por UDP
+			if validateCorrectness(ip, domain, false) {
+				correctCount++
+			}
+			totalCount++
+
+			// Validación DNSSEC por TCP
+			if validateCorrectness(ip, domain, false) {
+				correctCount++
+			}
+			totalCount++
 		}
 
 		fmt.Fprintf(outFile, "  IPv4 -> Total: %d | UDP: %d | TCP: %d\n", len(ipv4), ipv4UDP, ipv4TCP)
@@ -180,6 +256,15 @@ func main() {
 			estadoTCP = "Supera (> 500ms)"
 		}
 		fmt.Fprintf(outFile, "Latencia mediana TCP: %v [%s]\n", medianaTCP, estadoTCP)
+	}
+
+	if totalCount > 0 {
+		porcentaje := (float64(correctCount) / float64(totalCount)) * 100
+		estado := "Cumple"
+		if porcentaje < 100 {
+			estado = "NO Cumple"
+		}
+		fmt.Fprintf(outFile, "\nCumplimiento DNSSEC: %.2f%% [%s]\n", porcentaje, estado)
 	}
 
 	fmt.Println("Proceso finalizado. Resultados finales escritos en OUT.txt")
