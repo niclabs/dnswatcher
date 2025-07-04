@@ -13,11 +13,11 @@ Descripción: Determina si los servidores soportan consultas DNS a través de UD
 
 
 3. Latencia de respuesta y *latencia de publicación
-Estado: IMplementado
+Estado: Semi implementado (LdR)
 Referencias RSSAC047: 5.2 - RSI Response Latency
                       5.4 - RSI Publication Latency
 Descripción: Latencia de respuesta: mide el tiempo en recibir una respuesta a una consulta SOA.
-             Latencia de publicación: evalúa cuánto demora un vantage point en observar un nuevo serial SOA (FUTURA IMPLEMENTACIÓN)
+             Latencia de publicación: evalúa cuánto demora un vantage point en observar un nuevo serial SOA (FUTURA IMPLEMENTACIÓN) **
 ¿Cómo?: Latencia respuesta: Consultas tipo SOA al dominio raíz (“.”), registrando tiempo de respuesta y cambios en serial. Se usan los umbrales del paper (250 ms UDP, 500 ms TCP; 65 min para publicación).
 
 
@@ -30,7 +30,7 @@ Esta parte se implementó como prueba de concepto para validar la lógica básic
 
 
 5. Tasa de éxito/fallo en DNSSEC
-Estado: En proceso
+Estado: Implementado 
 Referencia RSSAC047: 5.3 - RSI Correctness
 Descripción: Cuantifica la proporción de respuestas DNSSEC correctamente validadas v/s fallidas.
 Idea: - En las respuestas recibidas, revisaremos si están presentes los registros RRSIG, NSEC, NSEC3.
@@ -39,7 +39,7 @@ Idea: - En las respuestas recibidas, revisaremos si están presentes los registr
 
 
 6. Validación de firma y registros DS
-Estado: En espera
+Estado: Implementado
 Referencia RSSAC047: 5.3
 Descripción: Verifica específicamente la correcta publicación y firma de los registros DS y su coherencia con NSEC/NSEC3.
 Idea: Para cada dominio, consultamos DS y luego DNSKEY, nos fijamos que el DS corresponda con la clave pública en DNSKEY.
