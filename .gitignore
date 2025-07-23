@@ -4,7 +4,7 @@
 *go.sum
 DrDNS/go.sum
 drdns.pl
-main_drdnsg
+main_drdns
 main_rest
 main_drdns.exe
 config.yml
@@ -184,3 +184,6 @@ cython_debug/
 
 # Ignorar carpetas GeoLite descargadas
 GeoLite2-*/
+
+# Ignorar archivo de salida de Implementaciones.go
+OUT.txt
