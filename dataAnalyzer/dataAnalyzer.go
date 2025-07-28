@@ -459,18 +459,18 @@ func saveAvailabilityAndLatency(runId int, ts string) {
 	if len(latenciasUDP) > 0 {
 		sort.Slice(latenciasUDP, func(i, j int) bool { return latenciasUDP[i] < latenciasUDP[j] })
 		medianaUDP := latenciasUDP[len(latenciasUDP)/2]
-		estado := "satisfy (<= 250ms)"
+		estado := "OK - threshold 250ms"
 		if medianaUDP > 250*time.Millisecond {
-			estado = "exceed (> 250ms)"
+			estado = "exceed - threshold 250ms"
 		}
 		latency["UDP_mediumlatency"] = fmt.Sprintf("%v [%s]", medianaUDP, estado)
 	}
 	if len(latenciasTCP) > 0 {
 		sort.Slice(latenciasTCP, func(i, j int) bool { return latenciasTCP[i] < latenciasTCP[j] })
 		medianaTCP := latenciasTCP[len(latenciasTCP)/2]
-		estado := "satisfy (<= 500ms)"
+		estado := "OK - threshold 500ms"
 		if medianaTCP > 500*time.Millisecond {
-			estado = "exceed (> 500ms)"
+			estado = "exceed - threshold 500ms"
 		}
 		latency["TCP_mediumlatency"] = fmt.Sprintf("%v [%s]", medianaTCP, estado)
 	}
