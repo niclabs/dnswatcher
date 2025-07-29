@@ -1,12 +1,15 @@
 package dataAnalyzer
 
 import (
+	"bufio"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/miekg/dns"
 	"log"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -202,6 +205,13 @@ func saveJsonRecomendations(runId int, ts string) {
 		log.Println(err)
 	}
 }
+
+// initjsonFolder ensures that the JSON output directory exists.
+// If the directory specified by the global variable `jsonsFolder` does not exist,
+// this function creates it with the default permissions.
+//
+// This function is typically called before writing any JSON output files to guarantee
+// that the target directory is available.
 func initjsonFolder() {
 	if _, err := os.Stat(jsonsFolder); os.IsNotExist(err) {
 		os.Mkdir(jsonsFolder, os.ModePerm)
@@ -229,6 +239,7 @@ func saveDispersion(runId int, ts string, db *sql.DB) {
 	saveCountDomainsWithCountNSIPs(runId, ts, db)
 	saveCountDomainsWithCountNSIPExclusive(runId, ts, db)
 	saveAvailabilityResults(runId, ts, db)
+	saveAvailabilityAndLatency(runId, ts) // metric 1 and 3
 }
 
 // saveAvailabilityResults retrieves availability results from the database and saves them in JSON format.
@@ -284,6 +295,189 @@ func saveAvailabilityResults(runId int, ts string, db *sql.DB) {
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(data); err != nil {
+		panic(err)
+	}
+}
+
+// new funcion!
+func resolveDNS(domain string, qtype uint16) []string {
+	m := new(dns.Msg)
+	m.SetQuestion(dns.Fqdn(domain), qtype)
+	c := new(dns.Client)
+
+	r, _, err := c.Exchange(m, "8.8.8.8:53")
+	if err != nil {
+		return nil
+	}
+
+	var results []string
+	for _, a := range r.Answer {
+		switch rr := a.(type) {
+		case *dns.A:
+			results = append(results, rr.A.String())
+		case *dns.AAAA:
+			results = append(results, rr.AAAA.String())
+		}
+	}
+	return results
+}
+
+func measureLatency(ip string, useTCP bool) (bool, time.Duration) {
+	m := new(dns.Msg)
+	m.SetQuestion(".", dns.TypeSOA)
+	client := &dns.Client{
+		Timeout: 4 * time.Second,
+	}
+	if useTCP {
+		client.Net = "tcp"
+	} else {
+		client.Net = "udp"
+	}
+	start := time.Now()
+	_, _, err := client.Exchange(m, ip+":53")
+	latency := time.Since(start)
+	return err == nil, latency
+}
+
+func saveAvailabilityAndLatency(runId int, ts string) {
+	// open file with domains
+	file, err := os.Open("input-example.txt")
+	if err != nil {
+		fmt.Println("Error leyendo archivo:", err)
+		return
+	}
+	defer file.Close()
+
+	ipv4Set := make(map[string]bool)
+	ipv6Set := make(map[string]bool)
+
+	tcpSupport := make(map[string]bool)
+	udpSupport := make(map[string]bool)
+
+	ipv4TotalCount, ipv6TotalCount := 0, 0
+	ipv4UDPCount, ipv4TCPCount := 0, 0
+	ipv6UDPCount, ipv6TCPCount := 0, 0
+
+	var latenciasUDP, latenciasTCP []time.Duration
+
+	scanner := bufio.NewScanner(file)
+	domainCount := 0
+
+	for scanner.Scan() {
+		domain := strings.TrimSpace(scanner.Text())
+		if domain == "" {
+			continue
+		}
+		domainCount++
+		ipv4 := resolveDNS(domain, dns.TypeA)
+		ipv6 := resolveDNS(domain, dns.TypeAAAA)
+
+		for _, ip := range ipv4 {
+			okUDP, latencyUDP := measureLatency(ip, false)
+			okTCP, latencyTCP := measureLatency(ip, true)
+
+			ipv4Set[ip] = true
+			ipv4TotalCount++
+			if okUDP {
+				udpSupport[ip] = true
+				ipv4UDPCount++
+				latenciasUDP = append(latenciasUDP, latencyUDP)
+			}
+			if okTCP {
+				tcpSupport[ip] = true
+				ipv4TCPCount++
+				latenciasTCP = append(latenciasTCP, latencyTCP)
+			}
+		}
+
+		for _, ip := range ipv6 {
+			okUDP, latencyUDP := measureLatency(ip, false)
+			okTCP, latencyTCP := measureLatency(ip, true)
+
+			ipv6Set[ip] = true
+			ipv6TotalCount++
+			if okUDP {
+				udpSupport[ip] = true
+				ipv6UDPCount++
+				latenciasUDP = append(latenciasUDP, latencyUDP)
+			}
+			if okTCP {
+				tcpSupport[ip] = true
+				ipv6TCPCount++
+				latenciasTCP = append(latenciasTCP, latencyTCP)
+			}
+		}
+	}
+
+	// save CountAvailabilityIP.json
+	filename := fmt.Sprintf("%s/%d_CountAvailabilityIP_%s.json", jsonsFolder, runId, ts)
+	file, err = os.Create(filename)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+
+	data := []map[string]interface{}{
+		{
+			"numdomains": domainCount,
+			"unique_ipcount": map[string]int{
+				"IPv4": len(ipv4Set),
+				"IPv6": len(ipv6Set),
+			},
+			"ipcount": map[string]int{
+				"IPv4": ipv4TotalCount,
+				"IPv6": ipv6TotalCount,
+			},
+			"availability_transport": map[string]int{
+				"UDP": len(udpSupport),
+				"TCP": len(tcpSupport),
+			},
+			"Summary by type of transport and protocol": map[string]int{
+				"IPv4_UDP_available": ipv4UDPCount,
+				"IPv4_TCP_available": ipv4TCPCount,
+				"IPv6_UDP_available": ipv6UDPCount,
+				"IPv6_TCP_available": ipv6TCPCount,
+			},
+		},
+	}
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(data); err != nil {
+		panic(err)
+	}
+
+	// Save CountLatency.json
+	filename = fmt.Sprintf("%s/%d_CountLatency_%s.json", jsonsFolder, runId, ts)
+	file, err = os.Create(filename)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+
+	latency := make(map[string]string)
+
+	if len(latenciasUDP) > 0 {
+		sort.Slice(latenciasUDP, func(i, j int) bool { return latenciasUDP[i] < latenciasUDP[j] })
+		medianaUDP := latenciasUDP[len(latenciasUDP)/2]
+		estado := "OK - threshold 250ms"
+		if medianaUDP > 250*time.Millisecond {
+			estado = "exceed - threshold 250ms"
+		}
+		latency["UDP_mediumlatency"] = fmt.Sprintf("%v [%s]", medianaUDP, estado)
+	}
+	if len(latenciasTCP) > 0 {
+		sort.Slice(latenciasTCP, func(i, j int) bool { return latenciasTCP[i] < latenciasTCP[j] })
+		medianaTCP := latenciasTCP[len(latenciasTCP)/2]
+		estado := "OK - threshold 500ms"
+		if medianaTCP > 500*time.Millisecond {
+			estado = "exceed - threshold 500ms"
+		}
+		latency["TCP_mediumlatency"] = fmt.Sprintf("%v [%s]", medianaTCP, estado)
+	}
+
+	encoder = json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(latency); err != nil {
 		panic(err)
 	}
 }
