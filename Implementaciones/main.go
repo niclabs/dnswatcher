@@ -10,6 +10,9 @@ import (
 	"time"
 )
 
+// MAIN / LISTADO
+// "github.com/niclabs/Observatorio/Implementaciones/LISTADO"
+
 func calculateMedian(values []time.Duration) time.Duration {
 	if len(values) == 0 {
 		return 0

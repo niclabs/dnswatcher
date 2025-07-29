@@ -188,3 +188,4 @@ GeoLite2-*/
 
 # Ignorar archivo de salida de Implementaciones.go
 OUT.txt
+main_result.txt

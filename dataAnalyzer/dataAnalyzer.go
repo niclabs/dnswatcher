@@ -523,8 +523,17 @@ func saveCountDomainsWithCountNSIPExclusive(runId int, ts string, db *sql.DB) {
 		if err := rows.Scan(pointers...); err != nil {
 			log.Fatal(err)
 		}
-		for i, col := range columns {
-			row[col] = values[i]
+		for i, col := range columns { // modified
+			val := values[i]
+			if b, ok := val.([]byte); ok {
+				if num, err := strconv.Atoi(string(b)); err == nil {
+					row[col] = num // convert byte slice to int
+				} else {
+					row[col] = string(b) // Store as string if conversion fails
+				}
+			} else {
+				row[col] = val // handle other types directly
+			}
 		}
 		data = append(data, row)
 	}
@@ -865,8 +874,17 @@ func saveCountDomainsWithCountNSIPs(runId int, ts string, db *sql.DB) {
 		if err := rows.Scan(pointers...); err != nil {
 			log.Fatal(err)
 		}
-		for i, col := range columns {
-			row[col] = values[i]
+		for i, col := range columns { // modified
+			val := values[i]
+			if b, ok := val.([]byte); ok {
+				if num, err := strconv.Atoi(string(b)); err == nil {
+					row[col] = num // convert byte slice to int
+				} else {
+					row[col] = string(b) // Store as string if conversion fails
+				}
+			} else {
+				row[col] = val // handle other types directly
+			}
 		}
 		data = append(data, row)
 	}
