@@ -11,7 +11,6 @@ import (
 )
 
 // MAIN / LISTADO
-// "github.com/niclabs/Observatorio/Implementaciones/LISTADO"
 
 func calculateMedian(values []time.Duration) time.Duration {
 	if len(values) == 0 {
@@ -79,15 +78,21 @@ func main() {
 	fmt.Fprintf(outFile, "TCP: %.2fms [%s]\n", tcpMedian.Seconds()*1000, checkLatencyStatus(tcpMedian, true))
 
 	correctness := LISTADO.RunCorrectness(domains)
-	fmt.Fprintln(outFile, "\n=== Punto 4 - RSI Correctness ===")
+	fmt.Fprintln(outFile, "\n=== Punto 4 & 13 - RSI Correctness y separación positiva/negativa ===")
 	for ip, stat := range correctness {
-		porcentaje := float64(stat.Success) / float64(stat.Total) * 100
-		estado := "PASS"
-		if porcentaje < 100.0 {
-			estado = "FAIL"
+		pctPos := float64(stat.SuccessPos) / float64(stat.TotalPos) * 100
+		pctNeg := float64(stat.SuccessNeg) / float64(stat.TotalNeg) * 100
+		estadoPos := "PASS"
+		estadoNeg := "PASS"
+		if pctPos < 100 {
+			estadoPos = "FAIL"
 		}
-		fmt.Fprintf(outFile, "%s: %d/%d (%.2f%%) [%s]\n",
-			ip, stat.Success, stat.Total, porcentaje, estado)
+		if pctNeg < 100 {
+			estadoNeg = "FAIL"
+		}
+		fmt.Fprintf(outFile, "%s\n", ip)
+		fmt.Fprintf(outFile, "  Positivas: %d/%d (%.2f%%) [%s]\n", stat.SuccessPos, stat.TotalPos, pctPos, estadoPos)
+		fmt.Fprintf(outFile, "  Negativas: %d/%d (%.2f%%) [%s]\n", stat.SuccessNeg, stat.TotalNeg, pctNeg, estadoNeg)
 	}
 
 	dnssecStats := LISTADO.RunDNSSECStats(domains)
@@ -143,6 +148,76 @@ func main() {
 	}
 	for errType, count := range typeCount {
 		fmt.Fprintf(outFile, "%s: %d ocurrencia(s)\n", errType, count)
+	}
+	/*
+		adversoStats := LISTADO.RunAdverso(domains)
+		fmt.Fprintln(outFile, "\n=== Punto 10 - Comportamiento bajo condiciones adversas ===")
+		for domain, pruebas := range adversoStats {
+			fmt.Fprintf(outFile, "Dominio: %s\n", domain)
+			for _, r := range pruebas {
+				estado := "OK"
+				if !r.Success {
+					estado = "FALLO"
+				}
+				fmt.Fprintf(outFile, "  IP: %s | Estado: %s | Tiempo: %.2fms", r.IP, estado, r.ResponseTime.Seconds()*1000)
+				if r.Error != "" {
+					fmt.Fprintf(outFile, " | Error: %s", r.Error)
+				}
+				fmt.Fprintln(outFile)
+			}
+		}
+	*/
+
+	fmt.Fprintln(outFile, "\n=== Punto 10 (Extendido) - Simulación de carga DNS ===")
+	adversoCargaStats := LISTADO.RunAdversoConCarga(domains, 50, 10*time.Second)
+
+	for domain, pruebas := range adversoCargaStats {
+		fmt.Fprintf(outFile, "Dominio: %s\n", domain)
+		for _, r := range pruebas {
+			fmt.Fprintf(outFile, "  IP: %s | OK: %d | Fails: %d | Latencia Promedio: %.2fms\n",
+				r.IP, r.Successes, r.Failures, r.AvgLatency.Seconds()*1000)
+		}
+	}
+
+	rssResults := LISTADO.RunRSSMetrics()
+	fmt.Fprintln(outFile, "\n=== Punto 11 - Métricas agregadas a nivel RSS ===")
+
+	var total, success int
+	var latencias []time.Duration
+
+	for _, r := range rssResults {
+		total++
+		if r.Success {
+			success++
+			latencias = append(latencias, r.ResponseTime)
+		}
+		status := "OK"
+		if !r.Success {
+			status = "FALLO: " + r.Error
+		}
+		fmt.Fprintf(outFile, "%s -> %s | %.2fms\n", r.Server, status, r.ResponseTime.Seconds()*1000)
+	}
+
+	porcentaje := float64(success) / float64(total) * 100
+	mediana := LISTADO.MedianDuration(latencias)
+	fmt.Fprintf(outFile, "Tasa de éxito: %d/%d (%.2f%%)\n", success, total, porcentaje)
+	fmt.Fprintf(outFile, "Latencia mediana (solo respuestas exitosas): %.2fms\n", mediana.Seconds()*1000)
+
+	nsidResults := LISTADO.RunNSIDCheck(domains)
+	fmt.Fprintln(outFile, "\n=== Punto 12 - Inclusión de NSID ===")
+	for dom, resList := range nsidResults {
+		fmt.Fprintf(outFile, "Dominio: %s\n", dom)
+		for _, res := range resList {
+			nsid := res.NSID
+			if nsid == "" {
+				nsid = "(ninguno)"
+			}
+			estado := "OK"
+			if res.Error != "" {
+				estado = "FALLO: " + res.Error
+			}
+			fmt.Fprintf(outFile, "  Servidor: %s | NSID: %s | %.2fms | %s\n", res.Server, nsid, res.Latency.Seconds()*1000, estado)
+		}
 	}
 
 	fmt.Println("Proceso finalizado. Resultados escritos en main_result.txt")
