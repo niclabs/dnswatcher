@@ -2,7 +2,7 @@
 Estado: Implementado
 Referencia RSSAC047: 5.1 - RSI Availability
 Descripción: Evalúa si los servidores autoritativos de cada dominio responden correctamente bajo ambas versiones de protocolo IP.
-¿Cómo?: SE realizan consultas tipo A (IPv4) y AAAA (IPv6) sobre los NS de cada dominio. Se cuenta cuántos responden por cada protocolo.
+¿Cómo?: Se realizan consultas tipo A (IPv4) y AAAA (IPv6) sobre los NS de cada dominio. Se cuenta cuántos responden por cada protocolo.
 
 
 2. Disponibilidad por tipo de transporte (UDP/TCP)
@@ -50,44 +50,54 @@ Idea: Para cada dominio, consultamos DS y luego DNSKEY, nos fijamos que el DS co
 
 
 7. Detalles de fallos y validaciones de configuración DNSSEC
-Estado: En espera
-Referencia RSSAC047: 4.8 - Unexpected Results
-Descripción: Desglose específico de errores detectados en respuestas DNSSEC (firmas inválidas, inconsistencias en secciones, etc.).
+Estado: Implementado
+Referencia: RSSAC047 4.8
+¿Cómo?: Se listan fallos específicos por dominio (e.g., "SOA sin AA", "NSEC faltante").
+
+
 
 
 8. Redundancia y distribución de servidores
-Estado: En espera
-Referencia RSSAC047: 3 - Vantage Points y 4.6 - Anycast
-Descripción: Evalúa si los dominios están respaldados por múltiples servidores en distintas redes (redundancia y cobertura).
-Idea: Contar cuántos servidores NS distintos tiene cada dominio, revisamos si están distribuidos en subredes diferentes
+Estado: Implementado
+Referencia: RSSAC047 3 y 4.6
+¿Cómo?: Se agrupan servidores NS por subred (vía /24 IPv4 y /48 IPv6).
+        Se cuenta la cantidad de subredes distintas por dominio.
 
 
 9. Clasificación automática de errores por categoría
-Estado: En espera
-Referencia RSSAC047: 4.8 - Unexpected Results
-Descripción: Agrupa los errores detectados (timeouts, fallos TCP, respuestas NXDOMAIN inesperadas, errores DNSSEC) en categorías para facilitar diagnóstico.
-Idea: Similar a la implementación del DrDNS
+Estado: Implementado
+Referencia: RSSAC047 4.8
+¿Cómo?: Se agrupan errores detectados (timeouts, fallos TCP, errores de DNSSEC, etc.) por tipo.
+        Inspirado en el comportamiento de DoctorDNS.
 
 
-10. Métricas bajo condiciones adversas (carga, congestión)
-Estado: En espera
-Referencia RSSAC047: 4.8 - Unexpected Results
-Descripción: Evalúa el comportamiento de los servidores DNS cuando se simulan condiciones adversas como latencia elevada, pérdida de paquetes o tráfico intenso.
-Idea: Usar la repo de erres sugerida por el profesor Urzúa.
+10. Métricas bajo condiciones adversas (carga, congestión) *********
+Estado: Implementado
+Referencia: RSSAC047 4.8
+¿Cómo?: Se introduce latencia artificial y se consulta a servidores autoritativos.
+        Se registra éxito/fallo y tiempo de respuesta.
 
 
-11. Métricas agregadas a nivel de sistema (RSS)
-Referencia RSSAC047: 6 - RSS Metrics
-Descripción: Medición de disponibilidad, latencia, y publicación a nivel de todo el sistema raíz (no sólo servidores individuales).
+11. Métricas agregadas a nivel de sistema (RSS) 
+Estado: Implementado
+Referencia: RSSAC047 6
+¿Cómo?: Se evalúan todos los root servers con consultas SOA.
+        Se mide latencia y tasa de éxito global.
 
 12. Inclusión de NSID en las consultas
-Referencia RSSAC047: 4.8
-Descripción: Permite identificar exactamente qué instancia respondió ante fallos inesperados.
+Estado: Implementado
+Referencia: RSSAC047 4.8
+¿Cómo?: Se agrega la opción NSID en consultas EDNS0 para identificar la instancia que responde.
+        Se mide si la instancia retorna correctamente su identificador.
 
 13. Separación explícita entre respuestas positivas y negativas
-Referencia RSSAC047: 5.3 - Correctness
-Descripción: Distinguir entre errores en respuestas esperadas positivas (SOA, NS, etc.) y negativas (NXDOMAIN), aplicando reglas distintas de validación.
+Estado: Implementado
+Referencia: RSSAC047 5.3
+¿Cómo?: Se separan métricas de consultas positivas (SOA, NS, DNSKEY) y negativas (NXDOMAIN).
+        Cada una tiene su propio conteo de éxito/fallo.
 
 14. Distribución de vantage points y diversidad geográfica/topológica
+Estado: en planificación
 Referencia RSSAC047: 3.1 y 3.2
 Descripción: Se sugiere expandir el sistema para incluir múltiples vantage points distribuidos por región y red, idealmente 20, para obtener resultados representativos.
+¿Cómo?: Este punto se desarrollará en conjunto con el Observatorio, usando claves geoid.

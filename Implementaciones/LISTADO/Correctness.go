@@ -10,9 +10,12 @@ import (
 )
 
 type CorrectnessStats struct {
-	Total   int
-	Success int
-	Fail    int
+	TotalPos   int
+	SuccessPos int
+	FailPos    int
+	TotalNeg   int
+	SuccessNeg int
+	FailNeg    int
 }
 
 var rootServers = []string{
@@ -31,7 +34,7 @@ var rootServers = []string{
 	"m.root-servers.net",
 }
 
-// ✅ Versión que agrupa por TLD ÚNICO
+// Versión que agrupa por TLD ÚNICO
 func RunCorrectness(domains []string) map[string]CorrectnessStats {
 	fmt.Println("\n=== Punto 4 - RSI Correctness (TLD Único) ===")
 
@@ -121,7 +124,7 @@ func validateAll(ip string, tld string, useTCP bool) CorrectnessStats {
 	queries := []struct {
 		name     string
 		qtype    uint16
-		expected string
+		expected string // "positive" or "negative"
 	}{
 		{tld, dns.TypeSOA, "positive"},
 		{tld, dns.TypeNS, "positive"},
@@ -134,11 +137,20 @@ func validateAll(ip string, tld string, useTCP bool) CorrectnessStats {
 		fmt.Printf("  Validando %s (%s) %d para IP %s\n", q.name, q.expected, q.qtype, ip)
 		ok, err := validateCorrectness(ip, q.name, q.qtype, useTCP)
 
-		stats.Total++
-		if err == nil && ok {
-			stats.Success++
+		if q.expected == "positive" {
+			stats.TotalPos++
+			if err == nil && ok {
+				stats.SuccessPos++
+			} else {
+				stats.FailPos++
+			}
 		} else {
-			stats.Fail++
+			stats.TotalNeg++
+			if err == nil && ok {
+				stats.SuccessNeg++
+			} else {
+				stats.FailNeg++
+			}
 		}
 	}
 	return stats
