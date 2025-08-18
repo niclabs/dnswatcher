@@ -464,7 +464,7 @@ func saveAvailabilityAndLatency(runId int, ts string) {
 			estado = "NOT_OK"
 		}
 		latency["UDP_mediumlatency"] = map[string]interface{}{
-			"values_ms": medianaUDP.Milliseconds(),
+			"values_ms": medianaUDP,
 			"status":    estado,
 		}
 	}
@@ -476,7 +476,7 @@ func saveAvailabilityAndLatency(runId int, ts string) {
 			estado = "NOT_OK"
 		}
 		latency["TCP_mediumlatency"] = map[string]interface{}{
-			"values_ms": medianaTCP.Milliseconds(),
+			"values_ms": medianaTCP,
 			"status":    estado,
 		}
 	}
