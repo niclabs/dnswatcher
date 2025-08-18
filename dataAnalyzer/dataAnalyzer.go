@@ -454,25 +454,31 @@ func saveAvailabilityAndLatency(runId int, ts string) {
 	}
 	defer file.Close()
 
-	latency := make(map[string]string)
+	latency := make(map[string]map[string]interface{})
 
 	if len(latenciasUDP) > 0 {
 		sort.Slice(latenciasUDP, func(i, j int) bool { return latenciasUDP[i] < latenciasUDP[j] })
 		medianaUDP := latenciasUDP[len(latenciasUDP)/2]
-		estado := "OK - threshold 250ms"
+		estado := "OK"
 		if medianaUDP > 250*time.Millisecond {
-			estado = "exceed - threshold 250ms"
+			estado = "NOT_OK"
 		}
-		latency["UDP_mediumlatency"] = fmt.Sprintf("%v [%s]", medianaUDP, estado)
+		latency["UDP_mediumlatency"] = map[string]interface{}{
+			"values_ms": medianaUDP.Milliseconds(),
+			"status":    estado,
+		}
 	}
 	if len(latenciasTCP) > 0 {
 		sort.Slice(latenciasTCP, func(i, j int) bool { return latenciasTCP[i] < latenciasTCP[j] })
 		medianaTCP := latenciasTCP[len(latenciasTCP)/2]
-		estado := "OK - threshold 500ms"
+		estado := "OK"
 		if medianaTCP > 500*time.Millisecond {
-			estado = "exceed - threshold 500ms"
+			estado = "NOT_OK"
 		}
-		latency["TCP_mediumlatency"] = fmt.Sprintf("%v [%s]", medianaTCP, estado)
+		latency["TCP_mediumlatency"] = map[string]interface{}{
+			"values_ms": medianaTCP.Milliseconds(),
+			"status":    estado,
+		}
 	}
 
 	encoder = json.NewEncoder(file)
