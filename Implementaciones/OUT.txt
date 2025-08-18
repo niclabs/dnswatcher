@@ -1,0 +1,323 @@
+australvaldivia.cl
+  IPv4: 169.46.71.186
+    IP: 169.46.71.186 | UDP: no | TCP: no
+  IPv6: No disponible
+elvacanudo.cl
+  IPv4: 172.67.183.21, 104.21.32.46
+    IP: 172.67.183.21 | UDP: no | TCP: no
+    IP: 104.21.32.46 | UDP: no | TCP: no
+  IPv6: 2606:4700:3036::6815:202e, 2606:4700:3036::ac43:b715
+    IP: 2606:4700:3036::6815:202e | UDP: no | TCP: no
+    IP: 2606:4700:3036::ac43:b715 | UDP: no | TCP: no
+properati.cl
+  IPv4: No disponible
+  IPv6: No disponible
+doite.cl
+  IPv4: 151.101.1.124, 151.101.65.124, 151.101.129.124, 151.101.193.124
+    IP: 151.101.1.124 | UDP: no | TCP: no
+    IP: 151.101.65.124 | UDP: no | TCP: no
+    IP: 151.101.129.124 | UDP: no | TCP: no
+    IP: 151.101.193.124 | UDP: no | TCP: no
+  IPv6: No disponible
+wieslaw.cl
+  IPv4: 34.174.157.100
+    IP: 34.174.157.100 | UDP: no | TCP: no
+  IPv6: No disponible
+mercadolibre.cl
+  IPv4: 3.162.232.85, 3.162.232.92, 3.162.232.79, 3.162.232.63
+    IP: 3.162.232.85 | UDP: no | TCP: no
+    IP: 3.162.232.92 | UDP: no | TCP: no
+    IP: 3.162.232.79 | UDP: no | TCP: no
+    IP: 3.162.232.63 | UDP: no | TCP: no
+  IPv6: No disponible
+dbsbeautystore.cl
+  IPv4: 104.26.6.95, 104.26.7.95, 172.67.73.98
+    IP: 104.26.6.95 | UDP: no | TCP: no
+    IP: 104.26.7.95 | UDP: no | TCP: no
+    IP: 172.67.73.98 | UDP: no | TCP: no
+  IPv6: 2606:4700:20::681a:65f, 2606:4700:20::ac43:4962, 2606:4700:20::681a:75f
+    IP: 2606:4700:20::681a:65f | UDP: no | TCP: no
+    IP: 2606:4700:20::ac43:4962 | UDP: no | TCP: no
+    IP: 2606:4700:20::681a:75f | UDP: no | TCP: no
+elandino.cl
+  IPv4: 143.202.12.26
+    IP: 143.202.12.26 | UDP: sí | TCP: sí
+  IPv6: No disponible
+chilecompra.cl
+  IPv4: 216.241.31.53
+    IP: 216.241.31.53 | UDP: no | TCP: no
+  IPv6: No disponible
+misegundavivienda.cl
+  IPv4: 172.67.153.181, 104.21.88.228
+    IP: 172.67.153.181 | UDP: no | TCP: no
+    IP: 104.21.88.228 | UDP: no | TCP: no
+  IPv6: 2606:4700:3037::ac43:99b5, 2606:4700:3033::6815:58e4
+    IP: 2606:4700:3037::ac43:99b5 | UDP: no | TCP: no
+    IP: 2606:4700:3033::6815:58e4 | UDP: no | TCP: no
+nikoncenter.cl
+  IPv4: 45.79.28.38
+    IP: 45.79.28.38 | UDP: no | TCP: no
+  IPv6: No disponible
+arriendovacaciones.cl
+  IPv4: No disponible
+  IPv6: No disponible
+empresaen1dia.cl
+  IPv4: No disponible
+  IPv6: No disponible
+clubprivados.cl
+  IPv4: 138.186.9.22
+    IP: 138.186.9.22 | UDP: sí | TCP: sí
+  IPv6: No disponible
+consejoderectores.cl
+  IPv4: 107.180.11.205
+    IP: 107.180.11.205 | UDP: no | TCP: no
+  IPv6: No disponible
+educacionvial.cl
+  IPv4: 100.24.89.177
+    IP: 100.24.89.177 | UDP: no | TCP: no
+  IPv6: No disponible
+mercurioantofagasta.cl
+  IPv4: 169.46.71.186
+    IP: 169.46.71.186 | UDP: no | TCP: no
+  IPv6: No disponible
+transvip.cl
+  IPv4: 34.107.179.182
+    IP: 34.107.179.182 | UDP: no | TCP: no
+  IPv6: No disponible
+ubiobio.cl
+  IPv4: 146.83.195.23
+    IP: 146.83.195.23 | UDP: no | TCP: no
+  IPv6: No disponible
+ciperchile.cl
+  IPv4: 45.230.21.231
+    IP: 45.230.21.231 | UDP: no | TCP: no
+  IPv6: No disponible
+megustaleer.cl
+  IPv4: 54.220.3.70, 54.76.174.122, 52.18.164.165
+    IP: 54.220.3.70 | UDP: no | TCP: no
+    IP: 54.76.174.122 | UDP: no | TCP: no
+    IP: 52.18.164.165 | UDP: no | TCP: no
+  IPv6: No disponible
+oxs.cl
+  IPv4: 35.172.243.171, 44.214.7.198
+    IP: 35.172.243.171 | UDP: no | TCP: no
+    IP: 44.214.7.198 | UDP: no | TCP: no
+  IPv6: No disponible
+pollachilena.cl
+  IPv4: 52.15.48.0
+    IP: 52.15.48.0 | UDP: no | TCP: no
+  IPv6: No disponible
+programaemprender.cl
+  IPv4: No disponible
+  IPv6: No disponible
+servicioweb.cl
+  IPv4: 173.236.143.74
+    IP: 173.236.143.74 | UDP: no | TCP: no
+  IPv6: No disponible
+papelesandalien.cl
+  IPv4: No disponible
+  IPv6: No disponible
+elcuartodigital.cl
+  IPv4: 35.172.243.171, 44.214.7.198
+    IP: 35.172.243.171 | UDP: no | TCP: no
+    IP: 44.214.7.198 | UDP: no | TCP: no
+  IPv6: No disponible
+puertolirquen.cl
+  IPv4: No disponible
+  IPv6: No disponible
+yuyu.cl
+  IPv4: 104.21.48.1, 104.21.112.1, 104.21.64.1, 104.21.96.1, 104.21.32.1, 104.21.16.1, 104.21.80.1
+    IP: 104.21.48.1 | UDP: no | TCP: no
+    IP: 104.21.112.1 | UDP: no | TCP: no
+    IP: 104.21.64.1 | UDP: no | TCP: no
+    IP: 104.21.96.1 | UDP: no | TCP: no
+    IP: 104.21.32.1 | UDP: no | TCP: no
+    IP: 104.21.16.1 | UDP: no | TCP: no
+    IP: 104.21.80.1 | UDP: no | TCP: no
+  IPv6: 2606:4700:3030::6815:1001, 2606:4700:3030::6815:2001, 2606:4700:3030::6815:5001, 2606:4700:3030::6815:6001, 2606:4700:3030::6815:7001, 2606:4700:3030::6815:4001, 2606:4700:3030::6815:3001
+    IP: 2606:4700:3030::6815:1001 | UDP: no | TCP: no
+    IP: 2606:4700:3030::6815:2001 | UDP: no | TCP: no
+    IP: 2606:4700:3030::6815:5001 | UDP: no | TCP: no
+    IP: 2606:4700:3030::6815:6001 | UDP: no | TCP: no
+    IP: 2606:4700:3030::6815:7001 | UDP: no | TCP: no
+    IP: 2606:4700:3030::6815:4001 | UDP: no | TCP: no
+    IP: 2606:4700:3030::6815:3001 | UDP: no | TCP: no
+nic.cl
+  IPv4: 200.7.7.3
+    IP: 200.7.7.3 | UDP: no | TCP: no
+  IPv6: 2001:1398:5::6003
+    IP: 2001:1398:5::6003 | UDP: no | TCP: no
+wsp.cl
+  IPv4: No disponible
+  IPv6: No disponible
+bancochile.cl
+  IPv4: 45.223.24.240, 45.223.18.240
+    IP: 45.223.24.240 | UDP: sí | TCP: sí
+    IP: 45.223.18.240 | UDP: sí | TCP: sí
+  IPv6: No disponible
+agrimed.cl
+  IPv4: No disponible
+  IPv6: No disponible
+srcei.cl
+  IPv4: 163.247.64.11, 163.247.64.130
+    IP: 163.247.64.11 | UDP: no | TCP: no
+    IP: 163.247.64.130 | UDP: sí | TCP: sí
+  IPv6: No disponible
+udi.cl
+  IPv4: 209.14.251.10
+    IP: 209.14.251.10 | UDP: sí | TCP: sí
+  IPv6: No disponible
+vulcano.cl
+  IPv4: 200.1.122.30
+    IP: 200.1.122.30 | UDP: no | TCP: no
+  IPv6: No disponible
+
+Cantidad total de dominios evaluados: 36
+Cantidad total de direcciones (SIN REPETICIONES):
+IPv4: 47
+IPv6: 15
+Cantidad total de direcciones (CON REPETICIONES):
+IPv4: 50
+IPv6: 15
+
+Disponibilidad por tipo de transporte:
+Soportan UDP: 6
+Soportan TCP: 6
+
+Resumen agregado por tipo de transporte y protocolo:
+IPv4 UDP disponibles: 6
+IPv4 TCP disponibles: 6
+IPv6 UDP disponibles: 0
+IPv6 TCP disponibles: 0
+
+Latencia mediana UDP: 10.76611ms [Cumple (<= 250ms)]
+Latencia mediana TCP: 23.162757ms [Cumple (<= 500ms)]
+
+--- Punto 4: RSI Correctness (5.3 RSSAC047) ---
+IPv6 2001:500:1::53 - Correct: 0 | Total: 5 | % Correct: 0.00% [FAIL]
+IPv6 2001:503:c27::2:30 - Correct: 0 | Total: 5 | % Correct: 0.00% [FAIL]
+IPv6 2001:dc3::35 - Correct: 0 | Total: 5 | % Correct: 0.00% [FAIL]
+IPv6 2001:500:2f::f - Correct: 0 | Total: 5 | % Correct: 0.00% [FAIL]
+IPv6 2001:7fe::53 - Correct: 0 | Total: 5 | % Correct: 0.00% [FAIL]
+IPv4 170.247.170.2 - Correct: 3 | Total: 5 | % Correct: 60.00% [FAIL]
+IPv4 199.7.91.13 - Correct: 4 | Total: 5 | % Correct: 80.00% [FAIL]
+IPv4 198.97.190.53 - Correct: 4 | Total: 5 | % Correct: 80.00% [FAIL]
+IPv4 199.7.83.42 - Correct: 4 | Total: 5 | % Correct: 80.00% [FAIL]
+IPv4 202.12.27.33 - Correct: 3 | Total: 5 | % Correct: 60.00% [FAIL]
+IPv6 2001:503:ba3e::2:30 - Correct: 0 | Total: 5 | % Correct: 0.00% [FAIL]
+IPv6 2001:500:9f::42 - Correct: 0 | Total: 5 | % Correct: 0.00% [FAIL]
+IPv4 198.41.0.4 - Correct: 4 | Total: 5 | % Correct: 80.00% [FAIL]
+IPv4 192.5.5.241 - Correct: 3 | Total: 5 | % Correct: 60.00% [FAIL]
+IPv4 192.36.148.17 - Correct: 3 | Total: 5 | % Correct: 60.00% [FAIL]
+IPv4 192.58.128.30 - Correct: 4 | Total: 5 | % Correct: 80.00% [FAIL]
+IPv4 193.0.14.129 - Correct: 3 | Total: 5 | % Correct: 60.00% [FAIL]
+IPv6 2001:500:2d::d - Correct: 0 | Total: 5 | % Correct: 0.00% [FAIL]
+IPv6 2001:500:a8::e - Correct: 0 | Total: 5 | % Correct: 0.00% [FAIL]
+IPv6 2001:500:12::d0d - Correct: 0 | Total: 5 | % Correct: 0.00% [FAIL]
+IPv4 192.33.4.12 - Correct: 3 | Total: 5 | % Correct: 60.00% [FAIL]
+IPv4 192.203.230.10 - Correct: 4 | Total: 5 | % Correct: 80.00% [FAIL]
+IPv4 192.112.36.4 - Correct: 3 | Total: 5 | % Correct: 60.00% [FAIL]
+IPv6 2801:1b8:10::b - Correct: 0 | Total: 5 | % Correct: 0.00% [FAIL]
+IPv6 2001:500:2::c - Correct: 0 | Total: 5 | % Correct: 0.00% [FAIL]
+IPv6 2001:7fd::1 - Correct: 0 | Total: 5 | % Correct: 0.00% [FAIL]
+
+--- Punto 5: Tasa de éxito/fallo DNSSEC (5.3 RSSAC047) ---
+IPv6 2001:7fe::53 - Total: 5 | Éxito: 0 | Fallo: 5 | % Éxito: 0.00%
+IPv4 170.247.170.2 - Total: 5 | Éxito: 3 | Fallo: 2 | % Éxito: 60.00%
+IPv4 199.7.91.13 - Total: 5 | Éxito: 4 | Fallo: 1 | % Éxito: 80.00%
+IPv4 198.97.190.53 - Total: 5 | Éxito: 4 | Fallo: 1 | % Éxito: 80.00%
+IPv4 199.7.83.42 - Total: 5 | Éxito: 4 | Fallo: 1 | % Éxito: 80.00%
+IPv4 202.12.27.33 - Total: 5 | Éxito: 3 | Fallo: 2 | % Éxito: 60.00%
+IPv6 2001:500:2f::f - Total: 5 | Éxito: 0 | Fallo: 5 | % Éxito: 0.00%
+IPv6 2001:500:9f::42 - Total: 5 | Éxito: 0 | Fallo: 5 | % Éxito: 0.00%
+IPv4 198.41.0.4 - Total: 5 | Éxito: 4 | Fallo: 1 | % Éxito: 80.00%
+IPv4 192.5.5.241 - Total: 5 | Éxito: 3 | Fallo: 2 | % Éxito: 60.00%
+IPv4 192.36.148.17 - Total: 5 | Éxito: 3 | Fallo: 2 | % Éxito: 60.00%
+IPv4 192.58.128.30 - Total: 5 | Éxito: 4 | Fallo: 1 | % Éxito: 80.00%
+IPv4 193.0.14.129 - Total: 5 | Éxito: 3 | Fallo: 2 | % Éxito: 60.00%
+IPv6 2001:503:ba3e::2:30 - Total: 5 | Éxito: 0 | Fallo: 5 | % Éxito: 0.00%
+IPv6 2001:500:a8::e - Total: 5 | Éxito: 0 | Fallo: 5 | % Éxito: 0.00%
+IPv6 2001:500:12::d0d - Total: 5 | Éxito: 0 | Fallo: 5 | % Éxito: 0.00%
+IPv4 192.33.4.12 - Total: 5 | Éxito: 3 | Fallo: 2 | % Éxito: 60.00%
+IPv4 192.203.230.10 - Total: 5 | Éxito: 4 | Fallo: 1 | % Éxito: 80.00%
+IPv4 192.112.36.4 - Total: 5 | Éxito: 3 | Fallo: 2 | % Éxito: 60.00%
+IPv6 2801:1b8:10::b - Total: 5 | Éxito: 0 | Fallo: 5 | % Éxito: 0.00%
+IPv6 2001:500:2::c - Total: 5 | Éxito: 0 | Fallo: 5 | % Éxito: 0.00%
+IPv6 2001:500:2d::d - Total: 5 | Éxito: 0 | Fallo: 5 | % Éxito: 0.00%
+IPv6 2001:7fd::1 - Total: 5 | Éxito: 0 | Fallo: 5 | % Éxito: 0.00%
+IPv6 2001:500:1::53 - Total: 5 | Éxito: 0 | Fallo: 5 | % Éxito: 0.00%
+IPv6 2001:503:c27::2:30 - Total: 5 | Éxito: 0 | Fallo: 5 | % Éxito: 0.00%
+IPv6 2001:dc3::35 - Total: 5 | Éxito: 0 | Fallo: 5 | % Éxito: 0.00%
+
+--- Punto 6: Validación DS-DNSKEY (5.3 RSSAC047) ---
+australvaldivia.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+elvacanudo.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+properati.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: read udp 192.168.1.95:53141->198.41.0.4:53: i/o timeout
+doite.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+wieslaw.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+mercadolibre.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+dbsbeautystore.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+elandino.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+chilecompra.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+misegundavivienda.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+nikoncenter.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+arriendovacaciones.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+empresaen1dia.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+clubprivados.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+consejoderectores.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+educacionvial.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+mercurioantofagasta.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+transvip.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+ubiobio.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+ciperchile.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+megustaleer.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+oxs.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+pollachilena.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+programaemprender.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+servicioweb.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+papelesandalien.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+elcuartodigital.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+puertolirquen.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+yuyu.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+nic.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+wsp.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+bancochile.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+agrimed.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+srcei.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+udi.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+vulcano.cl: FALLÓ validación -> fallo al obtener DS desde a.root-servers.net: <nil>
+
+
+=== Punto 1 & 2 - RSI Availability ===
+IPv4 UDP: 6
+IPv4 TCP: 6
+IPv6 UDP: 0
+IPv6 TCP: 0
+
+Cantidad total de direcciones (SIN REPETICIONES):
+IPv4: 48
+IPv6: 15
+
+Cantidad total de direcciones (CON REPETICIONES):
+IPv4: 51
+IPv6: 15
+
+Latencia de respuesta (mediana):
+UDP: 10.25ms [OK (<=250ms)]
+TCP: 18.62ms [OK (<=500ms)]
+
+=== Punto 4 - RSI Correctness ===
+2001:1398:121:0:190:124:27:10-v6: 0/4 (0.00%) [FAIL]
+185.159.197.56-v4: 4/4 (100.00%) [PASS]
+2001:1398:274:0:200:7:4:7-v6: 0/4 (0.00%) [FAIL]
+200.7.4.7-v4: 4/4 (100.00%) [PASS]
+185.159.198.56-v4: 4/4 (100.00%) [PASS]
+2001:500:14:6030:ad::1-v6: 0/4 (0.00%) [FAIL]
+200.16.112.16-v4: 4/4 (100.00%) [PASS]
+2001:1398:275:0:200:16:112:16-v6: 0/4 (0.00%) [FAIL]
+2001:67c:1010:8::53-v6: 0/4 (0.00%) [FAIL]
+2620:10a:80ab::56-v6: 0/4 (0.00%) [FAIL]
+204.61.216.30-v4: 4/4 (100.00%) [PASS]
+2620:10a:80aa::56-v6: 0/4 (0.00%) [FAIL]
+194.146.106.34-v4: 4/4 (100.00%) [PASS]
+190.124.27.10-v4: 4/4 (100.00%) [PASS]
