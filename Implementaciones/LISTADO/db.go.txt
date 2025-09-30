@@ -1,0 +1,65 @@
+// COMENTADA YA QUE FALTAN LAS CREDENCIALES, LAS MISMAS DEFINIDAS EN EL OBS ORIGINAL	
+
+package LISTADO
+
+import (
+	"database/sql"
+	"fmt"
+	"os"
+
+	_ "github.com/lib/pq"
+)
+
+type DB struct{ *sql.DB }
+
+
+
+func OpenDBFromEnv() (DB, error) {
+	dsn := os.Getenv("PG_DSN")
+	if dsn == "" {
+		host := getenv("PGHOST", "") 
+		port := getenv("PGPORT", "")
+		user := getenv("PGUSER", "")
+		pass := getenv("PGPASSWORD", "")
+		name := getenv("PGDATABASE", "observatorio")
+		dsn = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s", host, port, user, pass, name)
+	}
+	raw, err := sql.Open("postgres", dsn)
+	return DB{raw}, err
+}
+
+
+func getenv(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}
+
+func (db DB) NewRun(note string) (int, error) {
+	var id int
+	err := db.QueryRow(`INSERT INTO runs(note) VALUES ($1) RETURNING id`, note).Scan(&id)
+	return id, err
+}
+
+func (db DB) LoadEnabledDomains() ([]DomainRow, error) {
+	rows, err := db.Query(`SELECT id, name FROM domains WHERE enabled`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DomainRow
+	for rows.Next() {
+		var r DomainRow
+		if err := rows.Scan(&r.ID, &r.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+type DomainRow struct {
+	ID   int
+	Name string
+}
