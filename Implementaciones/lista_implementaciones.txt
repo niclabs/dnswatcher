@@ -101,3 +101,8 @@ Estado: en planificación
 Referencia RSSAC047: 3.1 y 3.2
 Descripción: Se sugiere expandir el sistema para incluir múltiples vantage points distribuidos por región y red, idealmente 20, para obtener resultados representativos.
 ¿Cómo?: Este punto se desarrollará en conjunto con el Observatorio, usando claves geoid.
+
+15. Presencia Web asociada a los dominios
+Estado: Implementado
+Descripción: Revisa si los dominios tienen un sitio web andando, probando tanto el dominio “pex como el www. Se hacen pruebas HTTP/HTTPS y se anotan cosas como el código de respuesta, cuánto se demora en contestar y, si aplica, los datos del certificado TLS.
+¿Cómo?: Primero se lanza un HEAD a https://dominio y https://www.dominio; si el server no lo soporta, se hace un GET liviano. Si eso tampoco resulta, se intenta con http://. Se marca como sitio existente si responde algo válido (2xx o 3xx). Además se guarda la URL final (por si hubo redirecciones), la latencia, posibles errores y el CN del certificado.
