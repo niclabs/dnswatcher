@@ -1,4 +1,4 @@
--- ESTO DSP PODEMOS AGREGARLO A createTable() del obs original
+-- ESTO DSP PODEMOS AGREGARLO A createTable() del obs original LISTO ✅
 
 CREATE TABLE IF NOT EXISTS runs (
   id SERIAL PRIMARY KEY,

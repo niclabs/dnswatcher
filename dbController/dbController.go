@@ -28,7 +28,7 @@ import (
 // Panics if any table creation fails.
 func CreateTables(db *sql.DB, drop bool) {
 	DropTable("runs", db, drop)
-	_, err := db.Exec("CREATE TABLE  IF NOT EXISTS runs ( id SERIAL PRIMARY KEY, tstmp timestamp, started_at timestamp not null default now(), correct_run bool, duration int, note text)")
+	_, err := db.Exec("CREATE TABLE  IF NOT EXISTS runs ( id SERIAL PRIMARY KEY, tstmp timestamp, correct_run bool, duration int, note text)")
 	if err != nil {
 		fmt.Println("OpenConnections", db.Stats())
 		panic(err)
@@ -160,12 +160,20 @@ func DropTable(table string, db *sql.DB, drop bool) {
 //
 // Parameters:
 //   - db: pointer to the SQL database connection.
+//   - note: optional note describing the run (can be empty).
 //
 // Returns:
 //   - int: the ID of the newly created run.
-func NewRun(db *sql.DB) int {
+//
+// The function inserts a new row in the runs table with the current timestamp (started_at)
+// and the provided note, then returns the generated run ID.
+func NewRun(db *sql.DB, note string) int {
 	var runId int
-	err := db.QueryRow("INSERT INTO runs(tstmp) VALUES($1) RETURNING id", time.Now()).Scan(&runId)
+	err := db.QueryRow(
+		"INSERT INTO runs(tstmp, note) VALUES($1, $2) RETURNING id",
+		time.Now(),
+		note,
+	).Scan(&runId)
 	if err != nil {
 		fmt.Println("OpenConnections", db.Stats())
 		panic(err)
@@ -202,13 +210,18 @@ func SaveCorrectRun(runId int, duration int, correct bool, db *sql.DB) {
 //
 // Returns:
 //   - int: the ID of the newly created domain.
-func SaveDomain(line string, runId int, db *sql.DB) int {
+func SaveDomain(line string, runId int, db *sql.DB, enabled bool) int {
 	var domainid int
-	err := db.QueryRow("INSERT INTO domain(name, run_id) VALUES($1,$2) RETURNING id", line, runId).Scan(&domainid)
+	err := db.QueryRow(
+		"INSERT INTO domain(name, run_id, enabled) VALUES($1,$2, $3) RETURNING id",
+		line,
+		runId,
+		enabled,
+	).Scan(&domainid)
 	if err != nil {
 		fmt.Println("OpenConnections", db.Stats(), "domain name", line)
 		if strings.Contains(err.Error(), "too many open files") {
-			return SaveDomain(line, runId, db)
+			return SaveDomain(line, runId, db, enabled)
 		}
 		panic(err)
 	}

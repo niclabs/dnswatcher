@@ -196,10 +196,11 @@ func InitializeDontProbeList(dpf string) (dontProbeList []*net.IPNet) {
 //   - port: Database port.
 //   - debugBool: Enables debug logging if true.
 //   - verboseBool: Enables verbose logging if true.
+//   - note: A note or description for the run to be stored in the database.
 //
 // Returns:
 //   - runId: The identifier of the created run in the database.
-func StartCollect(input string, c int, dbname string, user string, password string, host string, port int, debugBool bool, verboseBool bool) (runId int) {
+func StartCollect(input string, c int, dbname string, user string, password string, host string, port int, debugBool bool, verboseBool bool, note string) (runId int) {
 	url := fmt.Sprintf("postgres://%v:%v@%v:%v/%v?sslmode=disable",
 		user,
 		password,
@@ -213,7 +214,7 @@ func StartCollect(input string, c int, dbname string, user string, password stri
 	}
 	/*Initialize*/
 	concurrency = c
-	runId = dbController.NewRun(database)
+	runId = dbController.NewRun(database, note)
 	debug = debugBool
 	verbose = verboseBool
 
@@ -973,10 +974,9 @@ func getAndSaveDNSSECinfo(domainName string, domainNameServers []string, domainI
 //   - runId: The identifier for the current data collection run.
 //   - db: The database connection.
 func collectSingleDomainInfo(domainName string, runId int, db *sql.DB) {
-
 	var domainId int
 	// Create domain and save it in database
-	domainId = dbController.SaveDomain(domainName, runId, db)
+	domainId = dbController.SaveDomain(domainName, runId, db, true)
 
 	// Obtain NS records for the domain
 	var domainNameServers []string

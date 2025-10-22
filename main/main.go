@@ -76,8 +76,9 @@ func main() {
 		return
 	}
 
-	// Start data collection
-	runId := dataCollector.StartCollect(cfg.RunArguments.InputFilepath, cfg.RunArguments.Concurrency, cfg.Database.DatabaseName, cfg.Database.Username, cfg.Database.Password, cfg.Database.Host, cfg.Database.Port, cfg.RunArguments.Debug, cfg.RunArguments.Verbose)
+	// Start data collection with optional note -> from cfg.RunArguments if needed
+	note := ""
+	runId := dataCollector.StartCollect(cfg.RunArguments.InputFilepath, cfg.RunArguments.Concurrency, cfg.Database.DatabaseName, cfg.Database.Username, cfg.Database.Password, cfg.Database.Host, cfg.Database.Port, cfg.RunArguments.Debug, cfg.RunArguments.Verbose, note)
 
 	geoIPUtils.CloseGeoIP(geoipDB)
 	// Analyze collected data
