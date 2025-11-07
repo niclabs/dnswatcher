@@ -3,6 +3,7 @@ package dataCollector
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"net"
 	"runtime"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	_ "github.com/lib/pq"
 	"github.com/miekg/dns"
+	"github.com/niclabs/Observatorio/Implementaciones/LISTADO"
 	"github.com/niclabs/Observatorio/dbController"
 	"github.com/niclabs/Observatorio/dnsUtils"
 	"github.com/niclabs/Observatorio/geoIPUtils"
@@ -251,6 +253,13 @@ func createCollectorRoutines(db *sql.DB, inputFile string, runId int) {
 		return
 	}
 
+	domainIDs, err := loadDomainIDsFromDB(db, runId)
+	if err != nil {
+		log.Printf("error cargando domainIDs: %v", err)
+		// can continue with empty map
+		domainIDs = make(map[string]int)
+	}
+
 	domain_list_size = len(domainsList)
 
 	// Create the routines
@@ -300,9 +309,20 @@ func createCollectorRoutines(db *sql.DB, inputFile string, runId int) {
 		defer availabilityWg.Done()
 		collectAvailabilityData(runId, db)
 	}()
-
 	// Wait for availability data collection to complete
 	availabilityWg.Wait()
+
+	wg.Wait()
+	availability2Wg := sync.WaitGroup{}
+	availability2Wg.Add(1)
+	// run in goroutine (or call directly if you don't want concurrency)
+	go func() {
+		defer wg.Done()
+		stats := LISTADO.RunDisponibilidad(domainsList, runId, domainIDs, db)
+		// Handle the result: here it is printed, but you could save aggregated metrics in DB.
+		fmt.Printf("Disponibilidad recolectada: %+v\n", stats)
+	}()
+	availability2Wg.Wait()
 
 	// Save the result of the execution
 	totalTime := (int)(time.Since(startTime).Nanoseconds())
@@ -1224,4 +1244,24 @@ func isIPInDontProbeList(ip net.IP) bool {
 		}
 	}
 	return false
+}
+
+// loadDomainIDsFromDB builds the domain->id map from the `domain` table for the given run.
+func loadDomainIDsFromDB(db *sql.DB, runId int) (map[string]int, error) {
+	rows, err := db.Query("SELECT id, name FROM domain WHERE run_id=$1", runId)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	domainIDs := make(map[string]int)
+	var id int
+	var name string
+	for rows.Next() {
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		domainIDs[name] = id
+	}
+	return domainIDs, nil
 }

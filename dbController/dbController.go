@@ -283,6 +283,21 @@ func SaveDNSKEY(dnskey *dns.DNSKEY, dsok bool, domainId int, runId int, db *sql.
 	}
 }
 
+// ---
+// new function to save availability results
+// SaveAvailabilityObservation inserta una observación de disponibilidad.
+func SaveAvailabilityObservation(runId int, domainId int, ip string, ipVersion int, proto string, ok bool, latency time.Duration, db *sql.DB) {
+	latMs := int(latency.Milliseconds())
+	_, err := db.Exec(
+		"INSERT INTO availability_observations (run_id, domain_id, ip, ip_version, proto, ok, latency_ms) VALUES ($1, $2, $3::inet, $4, $5, $6, $7)",
+		runId, domainId, ip, ipVersion, proto, ok, latMs,
+	)
+	if err != nil {
+		fmt.Println("OpenConnections", db.Stats(), " domainId:", domainId, " ip:", ip)
+		panic(err)
+	}
+}
+
 // SaveAvailabilityResults inserts a new record into the `availability_metrics` table
 // with the provided availability result for a specific run.
 //
