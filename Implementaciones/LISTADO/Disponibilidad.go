@@ -3,10 +3,11 @@ package LISTADO
 import (
 	"database/sql"
 	"fmt"
-	"github.com/niclabs/Observatorio/dbController"
 	"net"
 	"strings"
 	"time"
+
+	"github.com/niclabs/Observatorio/dbController"
 
 	"github.com/miekg/dns"
 )
@@ -41,21 +42,15 @@ func RunDisponibilidad(domains []string, runId int, domainIDs map[string]int, db
 	tcpSupport := make(map[string]bool)
 
 	for _, domain := range domains {
-		//fmt.Printf("\nDominio: %s\n", domain)
+		fmt.Printf("\nDominio: %s\n", domain)
 
 		ipv4s := resolveDNS(domain, dns.TypeA)
 		ipv6s := resolveDNS(domain, dns.TypeAAAA)
 
-		var domainId int
-		if id, ok := domainIDs[domain]; ok {
-			domainId = id
-		} else {
-			// si no existe id en el map, usar 0 o manejar según convenga
-			domainId = 0
-		}
+		domainId := lookupDomainID(domain, domainIDs)
 
 		if len(ipv4s) == 0 {
-			//fmt.Println("  IPv4: No disponible")
+			fmt.Println("  IPv4: No disponible")
 		} else {
 			//fmt.Printf("  IPv4: %s\n", strings.Join(ipv4s, ", "))
 			for _, ip := range ipv4s {
@@ -74,21 +69,27 @@ func RunDisponibilidad(domains []string, runId int, domainIDs map[string]int, db
 					stats.LatenciasTCP = append(stats.LatenciasTCP, latencyTCP)
 				}
 
-				// Guardar en BD
+				// Guardar en BD: ahora SIEMPRE llamamos y la función manejará NULL si domainId==0
 				if db != nil {
 					dbController.SaveAvailabilityObservation(runId, domainId, ip, 4, "UDP", okUDP, latencyUDP, db)
 					dbController.SaveAvailabilityObservation(runId, domainId, ip, 4, "TCP", okTCP, latencyTCP, db)
+					if domainId != 0 {
+						fmt.Printf("Successful: SI se encontró domain_id para %s, guardado\n", domain)
+
+					} else {
+						fmt.Printf("Failed: no se encontró domain_id para %s, guardado con domain_id=0\n", domain)
+					}
 				}
 
-				//fmt.Printf("    IP: %s | UDP: %v (%.2fms) | TCP: %v (%.2fms)\n",
-				//	ip, okUDP, latencyUDP.Seconds()*1000, okTCP, latencyTCP.Seconds()*1000)
+				fmt.Printf("    IP: %s | UDP: %v (%.2fms) | TCP: %v (%.2fms)\n",
+					ip, okUDP, latencyUDP.Seconds()*1000, okTCP, latencyTCP.Seconds()*1000)
 			}
 		}
 
 		if len(ipv6s) == 0 {
-			//fmt.Println("  IPv6: No disponible")
+			fmt.Println("  IPv6: No disponible")
 		} else {
-			//fmt.Printf("  IPv6: %s\n", strings.Join(ipv6s, ", "))
+			fmt.Printf("  IPv6: %s\n", strings.Join(ipv6s, ", "))
 			for _, ip := range ipv6s {
 				okUDP, latencyUDP := testTransport(ip, false)
 				okTCP, latencyTCP := testTransport(ip, true)
@@ -105,14 +106,19 @@ func RunDisponibilidad(domains []string, runId int, domainIDs map[string]int, db
 					stats.LatenciasTCP = append(stats.LatenciasTCP, latencyTCP)
 				}
 
-				// Guardar en BD
+				// Guardar en BD: igual que IPv4
 				if db != nil {
 					dbController.SaveAvailabilityObservation(runId, domainId, ip, 6, "UDP", okUDP, latencyUDP, db)
 					dbController.SaveAvailabilityObservation(runId, domainId, ip, 6, "TCP", okTCP, latencyTCP, db)
+					if domainId != 0 {
+						fmt.Printf("Successful: SI se encontró domain_id para %s, guardado\n", domain)
+					} else {
+						fmt.Printf("Failed: no se encontró domain_id para %s, guardado con domain_id=0\n", domain)
+					}
 				}
 
-				//fmt.Printf("    IP: %s | UDP: %v (%.2fms) | TCP: %v (%.2fms)\n",
-				//	ip, okUDP, latencyUDP.Seconds()*1000, okTCP, latencyTCP.Seconds()*1000)
+				fmt.Printf("    IP: %s | UDP: %v (%.2fms) | TCP: %v (%.2fms)\n",
+					ip, okUDP, latencyUDP.Seconds()*1000, okTCP, latencyTCP.Seconds()*1000)
 			}
 		}
 	}
@@ -205,4 +211,22 @@ func testTransport(ip string, useTCP bool) (bool, time.Duration) {
 	}
 
 	return true, latency
+}
+
+// helper: busca el id normalizando formas comunes
+func lookupDomainID(domain string, domainIDs map[string]int) int {
+	// directo
+	if id, ok := domainIDs[domain]; ok {
+		return id
+	}
+	// FQDN con punto final
+	if id, ok := domainIDs[dns.Fqdn(domain)]; ok {
+		return id
+	}
+	// sin posible punto final
+	noDot := strings.TrimSuffix(domain, ".")
+	if id, ok := domainIDs[noDot]; ok {
+		return id
+	}
+	return 0
 }

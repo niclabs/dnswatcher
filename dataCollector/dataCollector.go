@@ -253,7 +253,7 @@ func createCollectorRoutines(db *sql.DB, inputFile string, runId int) {
 		return
 	}
 
-	domainIDs, err := loadDomainIDsFromDB(db, runId)
+	domainIDs, err := loadDomainIDsFromDB(db)
 	if err != nil {
 		log.Printf("error cargando domainIDs: %v", err)
 		// can continue with empty map
@@ -261,6 +261,8 @@ func createCollectorRoutines(db *sql.DB, inputFile string, runId int) {
 	}
 
 	domain_list_size = len(domainsList)
+
+	domainsList_normalized := normalizeDomainsList(domainsList)
 
 	// Create the routines
 	domainsQueue := make(chan string, concurrency)
@@ -312,18 +314,15 @@ func createCollectorRoutines(db *sql.DB, inputFile string, runId int) {
 	// Wait for availability data collection to complete
 	availabilityWg.Wait()
 
-	wg.Wait()
+	// Run LISTADO Disponibilidad
 	availability2Wg := sync.WaitGroup{}
 	availability2Wg.Add(1)
 	// run in goroutine (or call directly if you don't want concurrency)
 	go func() {
-		defer wg.Done()
-		stats := LISTADO.RunDisponibilidad(domainsList, runId, domainIDs, db)
-		// Handle the result: here it is printed, but you could save aggregated metrics in DB.
-		fmt.Printf("Disponibilidad recolectada: %+v\n", stats)
+		defer availability2Wg.Done()
+		LISTADO.RunDisponibilidad(domainsList_normalized, runId, domainIDs, db)
 	}()
 	availability2Wg.Wait()
-
 	// Save the result of the execution
 	totalTime := (int)(time.Since(startTime).Nanoseconds())
 	dbController.SaveCorrectRun(runId, totalTime, true, db)
@@ -1247,8 +1246,8 @@ func isIPInDontProbeList(ip net.IP) bool {
 }
 
 // loadDomainIDsFromDB builds the domain->id map from the `domain` table for the given run.
-func loadDomainIDsFromDB(db *sql.DB, runId int) (map[string]int, error) {
-	rows, err := db.Query("SELECT id, name FROM domain WHERE run_id=$1", runId)
+func loadDomainIDsFromDB(db *sql.DB) (map[string]int, error) {
+	rows, err := db.Query("SELECT id, name FROM domain")
 	if err != nil {
 		return nil, err
 	}
@@ -1259,9 +1258,31 @@ func loadDomainIDsFromDB(db *sql.DB, runId int) (map[string]int, error) {
 	var name string
 	for rows.Next() {
 		if err := rows.Scan(&id, &name); err != nil {
-			return nil, err
+			continue
 		}
-		domainIDs[name] = id
+		name = strings.TrimSpace(name)
+		lower := strings.ToLower(name)
+		noDot := strings.TrimSuffix(lower, ".")
+		fqdn := dns.Fqdn(noDot) // asegura el punto final
+
+		// Registrar varias claves para robustez
+		domainIDs[noDot] = id
+		domainIDs[fqdn] = id
+		domainIDs[lower] = id
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return domainIDs, nil
+}
+
+// Ejemplo de normalización de la lista leída con utils.ReadLines:
+// después de llamar a utils.ReadLines(inputFile) aplicar:
+func normalizeDomainsList(domains []string) []string {
+	for i, d := range domains {
+		d = strings.TrimSpace(d)
+		d = strings.ToLower(d)
+		domains[i] = d
+	}
+	return domains
 }

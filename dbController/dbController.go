@@ -213,7 +213,7 @@ func SaveCorrectRun(runId int, duration int, correct bool, db *sql.DB) {
 func SaveDomain(line string, runId int, db *sql.DB, enabled bool) int {
 	var domainid int
 	err := db.QueryRow(
-		"INSERT INTO domain(name, run_id, enabled) VALUES($1,$2, $3) RETURNING id",
+		"INSERT INTO domain(name, run_id, enabled) VALUES($1,$2, $3) ON CONFLICT (name) DO UPDATE SET enabled = EXCLUDED.enabled RETURNING id",
 		line,
 		runId,
 		enabled,
@@ -286,11 +286,19 @@ func SaveDNSKEY(dnskey *dns.DNSKEY, dsok bool, domainId int, runId int, db *sql.
 // ---
 // new function to save availability results
 // SaveAvailabilityObservation inserta una observación de disponibilidad.
-func SaveAvailabilityObservation(runId int, domainId int, ip string, ipVersion int, proto string, ok bool, latency time.Duration, db *sql.DB) {
+func SaveAvailabilityObservation(runId int, domainId int, ip string, ipVersion int, photo string, ok bool, latency time.Duration, db *sql.DB) {
 	latMs := int(latency.Milliseconds())
+	var domainID sql.NullInt64
+	if domainId > 0 {
+		domainID = sql.NullInt64{Int64: int64(domainId), Valid: true}
+	} else {
+		domainID = sql.NullInt64{Valid: false}
+	}
+
 	_, err := db.Exec(
-		"INSERT INTO availability_observations (run_id, domain_id, ip, ip_version, proto, ok, latency_ms) VALUES ($1, $2, $3::inet, $4, $5, $6, $7)",
-		runId, domainId, ip, ipVersion, proto, ok, latMs,
+		`INSERT INTO availability_observations(run_id, domain_id, ip, ip_version, photo, ok, latency_ms)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		runId, domainID, ip, ipVersion, photo, ok, latMs,
 	)
 	if err != nil {
 		fmt.Println("OpenConnections", db.Stats(), " domainId:", domainId, " ip:", ip)

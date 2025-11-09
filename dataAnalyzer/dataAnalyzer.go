@@ -1,15 +1,12 @@
 package dataAnalyzer
 
 import (
-	"bufio"
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/miekg/dns"
 	"log"
 	"os"
 	"os/exec"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -239,7 +236,7 @@ func saveDispersion(runId int, ts string, db *sql.DB) {
 	saveCountDomainsWithCountNSIPs(runId, ts, db)
 	saveCountDomainsWithCountNSIPExclusive(runId, ts, db)
 	saveAvailabilityResults(runId, ts, db)
-	saveAvailabilityAndLatency(runId, ts) // metric 1 and 3
+	//saveAvailabilityAndLatency(runId, ts) // metric 1 and 3
 }
 
 // saveAvailabilityResults retrieves availability results from the database and saves them in JSON format.
@@ -299,47 +296,8 @@ func saveAvailabilityResults(runId int, ts string, db *sql.DB) {
 	}
 }
 
-// new funcion!
-func resolveDNS(domain string, qtype uint16) []string {
-	m := new(dns.Msg)
-	m.SetQuestion(dns.Fqdn(domain), qtype)
-	c := new(dns.Client)
-
-	r, _, err := c.Exchange(m, "8.8.8.8:53")
-	if err != nil {
-		return nil
-	}
-
-	var results []string
-	for _, a := range r.Answer {
-		switch rr := a.(type) {
-		case *dns.A:
-			results = append(results, rr.A.String())
-		case *dns.AAAA:
-			results = append(results, rr.AAAA.String())
-		}
-	}
-	return results
-}
-
-func measureLatency(ip string, useTCP bool) (bool, time.Duration) {
-	m := new(dns.Msg)
-	m.SetQuestion(".", dns.TypeSOA)
-	client := &dns.Client{
-		Timeout: 4 * time.Second,
-	}
-	if useTCP {
-		client.Net = "tcp"
-	} else {
-		client.Net = "udp"
-	}
-	start := time.Now()
-	_, _, err := client.Exchange(m, ip+":53")
-	latency := time.Since(start)
-	return err == nil, latency
-}
-
-func saveAvailabilityAndLatency(runId int, ts string) {
+// modificar después para que lea de la bd
+/*func saveAvailabilityAndLatency(runId int, ts string) {
 	// open file with domains
 	file, err := os.Open("input-example.txt")
 	if err != nil {
@@ -486,7 +444,7 @@ func saveAvailabilityAndLatency(runId int, ts string) {
 	if err := encoder.Encode(latency); err != nil {
 		panic(err)
 	}
-}
+}*/
 
 // saveCountDomainsWithCountNSIPExclusive retrieves and saves statistics about domains with exclusive nameserver IPs.
 //
