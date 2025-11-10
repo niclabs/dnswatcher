@@ -323,6 +323,25 @@ func createCollectorRoutines(db *sql.DB, inputFile string, runId int) {
 		LISTADO.RunDisponibilidad(domainsList_normalized, runId, domainIDs, db)
 	}()
 	availability2Wg.Wait()
+
+	// Run LISTADO Correctness
+	correctnessWg := sync.WaitGroup{}
+	correctnessWg.Add(1)
+	go func() {
+		defer correctnessWg.Done()
+		LISTADO.RunCorrectness(domainsList, runId, db)
+	}()
+	correctnessWg.Wait()
+
+	// Run LISTADO DNSSEC (igual patrón que las otras llamadas)
+	dnssecWg := sync.WaitGroup{}
+	dnssecWg.Add(1)
+	go func() {
+		defer dnssecWg.Done()
+		LISTADO.RunDNSSECStats(domainsList, runId, db)
+	}()
+	dnssecWg.Wait()
+
 	// Save the result of the execution
 	totalTime := (int)(time.Since(startTime).Nanoseconds())
 	dbController.SaveCorrectRun(runId, totalTime, true, db)
@@ -1247,7 +1266,7 @@ func isIPInDontProbeList(ip net.IP) bool {
 
 // loadDomainIDsFromDB builds the domain->id map from the `domain` table for the given run.
 func loadDomainIDsFromDB(db *sql.DB) (map[string]int, error) {
-	rows, err := db.Query("SELECT id, name FROM domain")
+	rows, err := db.Query("SELECT id, name FROM domain WHERE enabled")
 	if err != nil {
 		return nil, err
 	}

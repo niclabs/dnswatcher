@@ -91,7 +91,7 @@ func CreateTables(db *sql.DB, drop bool) {
 	}
 	// new tables
 	DropTable("availability_observations", db, drop)
-	_, err = db.Exec("CREATE TABLE IF NOT EXISTS availability_observations ( id SERIAL PRIMARY KEY, run_id integer not null REFERENCES runs(id), domain_id integer not null REFERENCES domain(id), ip inet not null, ip_version smallint not null, photo varchar(3) not null, ok bool not null, latency_ms integer, observer_at timestamp not null default now())")
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS availability_observations ( id SERIAL PRIMARY KEY, run_id integer not null REFERENCES runs(id), domain_id integer not null REFERENCES domain(id), ip inet not null, ip_version smallint not null, proto varchar(3) not null, ok bool not null, latency_ms integer, observer_at timestamp not null default now())")
 	if err != nil {
 		fmt.Println("OpenConnections", db.Stats())
 		panic(err)
@@ -286,7 +286,7 @@ func SaveDNSKEY(dnskey *dns.DNSKEY, dsok bool, domainId int, runId int, db *sql.
 // ---
 // new function to save availability results
 // SaveAvailabilityObservation inserta una observación de disponibilidad.
-func SaveAvailabilityObservation(runId int, domainId int, ip string, ipVersion int, photo string, ok bool, latency time.Duration, db *sql.DB) {
+func SaveAvailabilityObservation(runId int, domainId int, ip string, ipVersion int, proto string, ok bool, latency time.Duration, db *sql.DB) {
 	latMs := int(latency.Milliseconds())
 	var domainID sql.NullInt64
 	if domainId > 0 {
@@ -296,14 +296,59 @@ func SaveAvailabilityObservation(runId int, domainId int, ip string, ipVersion i
 	}
 
 	_, err := db.Exec(
-		`INSERT INTO availability_observations(run_id, domain_id, ip, ip_version, photo, ok, latency_ms)
+		`INSERT INTO availability_observations(run_id, domain_id, ip, ip_version, proto, ok, latency_ms)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-		runId, domainID, ip, ipVersion, photo, ok, latMs,
+		runId, domainID, ip, ipVersion, proto, ok, latMs,
 	)
 	if err != nil {
 		fmt.Println("OpenConnections", db.Stats(), " domainId:", domainId, " ip:", ip)
 		panic(err)
 	}
+}
+
+// CorrectnessRow have the values that are stored in the correctness_stats table.
+type CorrectnessRow struct {
+	IP         string
+	Version    string // "-v4" o "-v6"
+	TotalPos   int
+	SuccessPos int
+	FailPos    int
+	TotalNeg   int
+	SuccessNeg int
+	FailNeg    int
+}
+
+// SaveCorrectness inserta una fila en correctness_stats.
+// Parámetros: runId, ip, version ("-v4"/"-v6"), totalPos, successPos, failPos, totalNeg, successNeg, failNeg, db
+func SaveCorrectness(runId int, r CorrectnessRow, db *sql.DB) {
+	_, err := db.Exec(
+		`INSERT INTO correctness_stats(run_id, ip, version, total_pos, success_pos, fail_pos, total_neg, success_neg, fail_neg)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		runId, r.IP, r.Version, r.TotalPos, r.SuccessPos, r.FailPos, r.TotalNeg, r.SuccessNeg, r.FailNeg,
+	)
+	if err != nil {
+		fmt.Println("OpenConnections", db.Stats(), " ip:", r.IP)
+		panic(err)
+	}
+}
+
+// SaveDNSSEC inserta un registro en dnssec_stats y sus detalles en dnssec_fail_details.
+// Patrón similar a persist.go
+func SaveDNSSEC(runId int, domainId int, total, success, fail int, details []string, db *sql.DB) error {
+	var id int
+	err := db.QueryRow(
+		"INSERT INTO dnssec_stats(run_id, domain_id, total, success, fail) VALUES($1,$2,$3,$4,$5) RETURNING id",
+		runId, domainId, total, success, fail,
+	).Scan(&id)
+	if err != nil {
+		return err
+	}
+	for _, det := range details {
+		if _, err := db.Exec("INSERT INTO dnssec_fail_details(dnssec_stat_id, detail) VALUES($1,$2)", id, det); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SaveAvailabilityResults inserts a new record into the `availability_metrics` table

@@ -31,7 +31,7 @@ type DisponibilidadStats struct {
 
 // Ejecuta resolución A/AAAA + UDP/TCP
 func RunDisponibilidad(domains []string, runId int, domainIDs map[string]int, db *sql.DB) DisponibilidadStats {
-	//fmt.Println("=== Punto 1 & 2 & 3 - RSI Availability & Response Latency ===")
+	fmt.Println("=== Punto 1 & 2 & 3 - RSI Availability & Response Latency ===")
 
 	stats := DisponibilidadStats{
 		IPv4Set: make(map[string]bool),
@@ -77,12 +77,12 @@ func RunDisponibilidad(domains []string, runId int, domainIDs map[string]int, db
 						fmt.Printf("Successful: SI se encontró domain_id para %s, guardado\n", domain)
 
 					} else {
-						fmt.Printf("Failed: no se encontró domain_id para %s, guardado con domain_id=0\n", domain)
+						fmt.Printf("Failed: NO se encontró domain_id para %s, guardado con domain_id=0\n", domain)
 					}
 				}
 
-				fmt.Printf("    IP: %s | UDP: %v (%.2fms) | TCP: %v (%.2fms)\n",
-					ip, okUDP, latencyUDP.Seconds()*1000, okTCP, latencyTCP.Seconds()*1000)
+				//fmt.Printf("    IP: %s | UDP: %v (%.2fms) | TCP: %v (%.2fms)\n",
+				//	ip, okUDP, latencyUDP.Seconds()*1000, okTCP, latencyTCP.Seconds()*1000)
 			}
 		}
 
@@ -113,12 +113,12 @@ func RunDisponibilidad(domains []string, runId int, domainIDs map[string]int, db
 					if domainId != 0 {
 						fmt.Printf("Successful: SI se encontró domain_id para %s, guardado\n", domain)
 					} else {
-						fmt.Printf("Failed: no se encontró domain_id para %s, guardado con domain_id=0\n", domain)
+						fmt.Printf("Failed: NO se encontró domain_id para %s, guardado con domain_id=0\n", domain)
 					}
 				}
 
-				fmt.Printf("    IP: %s | UDP: %v (%.2fms) | TCP: %v (%.2fms)\n",
-					ip, okUDP, latencyUDP.Seconds()*1000, okTCP, latencyTCP.Seconds()*1000)
+				//fmt.Printf("    IP: %s | UDP: %v (%.2fms) | TCP: %v (%.2fms)\n",
+				//	ip, okUDP, latencyUDP.Seconds()*1000, okTCP, latencyTCP.Seconds()*1000)
 			}
 		}
 	}
