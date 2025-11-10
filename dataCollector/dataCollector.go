@@ -333,7 +333,7 @@ func createCollectorRoutines(db *sql.DB, inputFile string, runId int) {
 	}()
 	correctnessWg.Wait()
 
-	// Run LISTADO DNSSEC (igual patrón que las otras llamadas)
+	// Run LISTADO DNSSEC
 	dnssecWg := sync.WaitGroup{}
 	dnssecWg.Add(1)
 	go func() {
@@ -341,6 +341,15 @@ func createCollectorRoutines(db *sql.DB, inputFile string, runId int) {
 		LISTADO.RunDNSSECStats(domainsList, runId, db)
 	}()
 	dnssecWg.Wait()
+
+	// Run LISTADO Redundancia
+	redundancyWg := sync.WaitGroup{}
+	redundancyWg.Add(1)
+	go func() {
+		defer redundancyWg.Done()
+		LISTADO.CheckRedundancia(domainsList_normalized, runId, domainIDs, db)
+	}()
+	redundancyWg.Wait()
 
 	// Save the result of the execution
 	totalTime := (int)(time.Since(startTime).Nanoseconds())

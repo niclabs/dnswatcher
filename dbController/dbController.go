@@ -351,6 +351,16 @@ func SaveDNSSEC(runId int, domainId int, total, success, fail int, details []str
 	return nil
 }
 
+// SaveRedundancy inserta un registro en redundancy_distribution.
+// Devuelve error para que el llamador decida cómo manejarlo (siguiendo el patrón de persist.go).
+func SaveRedundancy(runId int, domainId int, subnetCount int, db *sql.DB) error {
+	_, err := db.Exec("INSERT INTO redundancy_distribution(run_id, domain_id, subnet_count) VALUES($1,$2,$3)", runId, domainId, subnetCount)
+	if err != nil {
+		fmt.Println("OpenConnections", db.Stats(), " DomainId: ", domainId)
+	}
+	return err
+}
+
 // SaveAvailabilityResults inserts a new record into the `availability_metrics` table
 // with the provided availability result for a specific run.
 //

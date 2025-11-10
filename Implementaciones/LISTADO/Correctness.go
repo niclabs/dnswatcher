@@ -96,7 +96,7 @@ func RunCorrectness(domains []string, runId int, db *sql.DB) map[string]Correctn
 			}
 		}
 	}
-	fmt.Println("Métrica 4 recolectada correctamente")
+	fmt.Println("=== Métrica 4 recolectada correctamente ===")
 
 	return result
 }

@@ -97,7 +97,7 @@ func RunDNSSECStats(domains []string, runId int, db *sql.DB) map[string]DNSSECSt
 		}
 	}
 
-	fmt.Println("Métrica 5, 6 y 7 recolectada correctamente")
+	fmt.Println("=== Métrica 5, 6 y 7 recolectada correctamente ===")
 
 	return result
 }
