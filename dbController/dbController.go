@@ -333,7 +333,6 @@ func SaveCorrectness(runId int, r CorrectnessRow, db *sql.DB) {
 }
 
 // SaveDNSSEC inserta un registro en dnssec_stats y sus detalles en dnssec_fail_details.
-// Patrón similar a persist.go
 func SaveDNSSEC(runId int, domainId int, total, success, fail int, details []string, db *sql.DB) error {
 	var id int
 	err := db.QueryRow(
@@ -352,11 +351,24 @@ func SaveDNSSEC(runId int, domainId int, total, success, fail int, details []str
 }
 
 // SaveRedundancy inserta un registro en redundancy_distribution.
-// Devuelve error para que el llamador decida cómo manejarlo (siguiendo el patrón de persist.go).
+// Devuelve error para que el llamador decida cómo manejarlo
 func SaveRedundancy(runId int, domainId int, subnetCount int, db *sql.DB) error {
 	_, err := db.Exec("INSERT INTO redundancy_distribution(run_id, domain_id, subnet_count) VALUES($1,$2,$3)", runId, domainId, subnetCount)
 	if err != nil {
 		fmt.Println("OpenConnections", db.Stats(), " DomainId: ", domainId)
+	}
+	return err
+}
+
+// SaveNSID inserta un resultado NSID en la tabla nsid_results.
+func SaveNSID(runId int, domainId int, server string, nsid string, errStr string, latency time.Duration, db *sql.DB) error {
+	_, err := db.Exec(
+		`INSERT INTO nsid_results(run_id, domain_id, server, nsid, error, latency_ms)
+		 VALUES ($1,$2,$3,$4,$5,$6)`,
+		runId, domainId, server, nsid, errStr, int(latency.Milliseconds()),
+	)
+	if err != nil {
+		fmt.Println("OpenConnections", db.Stats(), " domainId:", domainId)
 	}
 	return err
 }

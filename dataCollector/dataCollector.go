@@ -351,6 +351,15 @@ func createCollectorRoutines(db *sql.DB, inputFile string, runId int) {
 	}()
 	redundancyWg.Wait()
 
+	// Run LISTADO NSID
+	nsidWg := sync.WaitGroup{}
+	nsidWg.Add(1)
+	go func() {
+		defer nsidWg.Done()
+		LISTADO.RunNSIDCheck(domainsList_normalized, runId, domainIDs, db)
+	}()
+	nsidWg.Wait()
+
 	// Save the result of the execution
 	totalTime := (int)(time.Since(startTime).Nanoseconds())
 	dbController.SaveCorrectRun(runId, totalTime, true, db)
