@@ -3,11 +3,14 @@ package LISTADO
 import (
 	"crypto/sha256"
 	"crypto/tls"
+	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/niclabs/Observatorio/dbController"
 )
 
 type hostProbe struct {
@@ -31,7 +34,8 @@ type WebPresenceResult struct {
 }
 
 // RunWebPresence realiza HEAD (con fallback a GET mínimo) sobre https://{host} y http://{host}
-func RunWebPresence(domains []string) map[string]WebPresenceResult {
+func RunWebPresence(domains []string, runID int, domainIDs map[string]int, db *sql.DB) map[string]WebPresenceResult {
+	fmt.Println("=== Punto 15 - Web presence associated with domains ===")
 	results := make(map[string]WebPresenceResult)
 	for _, d := range domains {
 		apex := probeHost(d)
@@ -42,7 +46,24 @@ func RunWebPresence(domains []string) map[string]WebPresenceResult {
 			WWW:          www,
 			AnyReachable: (apex.Reachable || www.Reachable),
 		}
+
+		domainId := lookupDomainID(d, domainIDs)
+		// Persistir en BD si se entregó conexión
+		if db != nil {
+			if err := dbController.SaveWebPresence(domainId, runID, "APX", apex.Scheme, apex.URL, apex.FinalURL, apex.Status, apex.Reachable, apex.TLSCN, apex.BodyHash, apex.Err, apex.Latency, db); err != nil {
+				fmt.Println("SaveWebPresence APX error:", err)
+			}
+			if err := dbController.SaveWebPresence(domainId, runID, "WWW", www.Scheme, www.URL, www.FinalURL, www.Status, www.Reachable, www.TLSCN, www.BodyHash, www.Err, www.Latency, db); err != nil {
+				fmt.Println("SaveWebPresence WWW error:", err)
+			}
+			if domainId != 0 {
+				fmt.Printf("Successful: SI se encontró domain_id para %s, guardado\n", d)
+			} else {
+				fmt.Printf("Failed: NO se encontró domain_id para %s, guardado con domain_id=0\n", d)
+			}
+		}
 	}
+	fmt.Println("=== Métrica 15 recolectada correctamente ===")
 	return results
 }
 

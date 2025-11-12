@@ -373,6 +373,32 @@ func SaveNSID(runId int, domainId int, server string, nsid string, errStr string
 	return err
 }
 
+// SaveWebPresence saves a web presence check result into the database.
+// Parameters:
+//   - domainId: domain ID from the domain table.
+//   - runID: the ID of the current run.
+//   - hostKind: 'APX' o 'WWW'.
+//   - scheme, urlStr, final: Check values.
+//   - status: HTTP status code (int).
+//   - reachable: whether the host was reachable (bool).
+//   - tlsCN, bodyHash, errStr: additional check details (strings).
+//   - lat: latency as time.Duration.
+//   - db: *sql.DB connection.
+//
+// If the insertion fails, it prints an error message to the console.
+func SaveWebPresence(domainId int, runID int, hostKind, scheme, urlStr, final string, status int, reachable bool, tlsCN, bodyHash, errStr string, lat time.Duration, db *sql.DB) error {
+	latencyMs := int(lat.Milliseconds())
+	_, err := db.Exec(
+		`INSERT INTO web_presence(run_id, domain_id, host_kind, scheme, url, final_url, status_code, reachable, tls_cn, latency_ms, body_hash, error)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		runID, domainId, hostKind, scheme, urlStr, final, status, reachable, tlsCN, latencyMs, bodyHash, errStr,
+	)
+	if err != nil {
+		fmt.Println("OpenConnections", db.Stats(), " domainId:", domainId)
+	}
+	return nil
+}
+
 // SaveAvailabilityResults inserts a new record into the `availability_metrics` table
 // with the provided availability result for a specific run.
 //

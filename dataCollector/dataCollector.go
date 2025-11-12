@@ -360,6 +360,15 @@ func createCollectorRoutines(db *sql.DB, inputFile string, runId int) {
 	}()
 	nsidWg.Wait()
 
+	// Run LISTADO WebPresence
+	webPresenceWg := sync.WaitGroup{}
+	webPresenceWg.Add(1)
+	go func() {
+		defer webPresenceWg.Done()
+		LISTADO.RunWebPresence(domainsList_normalized, runId, domainIDs, db)
+	}()
+	webPresenceWg.Wait()
+
 	// Save the result of the execution
 	totalTime := (int)(time.Since(startTime).Nanoseconds())
 	dbController.SaveCorrectRun(runId, totalTime, true, db)

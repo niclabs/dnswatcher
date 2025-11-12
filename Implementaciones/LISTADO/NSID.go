@@ -85,6 +85,6 @@ func RunNSIDCheck(domains []string, runId int, domainIDs map[string]int, db *sql
 		}
 		results[domain] = domainResults
 	}
-
+	fmt.Println("=== Métrica 12 recolectada correctamente ===")
 	return results
 }
