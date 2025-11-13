@@ -815,7 +815,7 @@ func saveAdversoJson(runId int, ts string, results map[string][]LISTADO.AdversoR
 		panic(fmt.Errorf("encoding adverso json: %w", err))
 	}
 
-	fmt.Printf("✓ Métrica 10 guardada en JSON para run_id=%d\n", runId)
+	fmt.Printf("✓ Métrica 10 guardada en JSON para run_id=%d", runId)
 
 	// Intentar borrar el archivo temporal, si existe
 	const tempFile = "temp_adverso_results.json"
@@ -1026,7 +1026,7 @@ func saveNSIDJson(runId int, ts string, db *sql.DB) {
 		panic(fmt.Errorf("error encoding NSID json: %w", err))
 	}
 
-	fmt.Printf("✓ Métrica 12 guardada en JSON para run_id=%d", runId)
+	fmt.Printf("✓ Métrica 12 guardada en JSON para run_id=%d\n", runId)
 }
 
 func saveWebJson(runId int, ts string, db *sql.DB) {
