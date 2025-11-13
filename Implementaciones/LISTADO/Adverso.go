@@ -110,6 +110,7 @@ func RunAdversoConCarga(domains []string, qps int, dur time.Duration) map[string
 				loadResult.IP, loadResult.Successes, loadResult.Failures, loadResult.AvgLatency.Seconds()*1000)
 		}
 	}
+	fmt.Println("=== Métrica 10 recolectada correctamente ===")
 
 	return results
 }

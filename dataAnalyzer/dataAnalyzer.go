@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"os/exec"
 	"sort"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	"github.com/niclabs/Observatorio/Implementaciones/LISTADO"
 	"github.com/niclabs/Observatorio/dbController"
 )
 
@@ -240,6 +242,13 @@ func saveDispersion(runId int, ts string, db *sql.DB) {
 	saveAvailabilityJson(runId, ts, db) // metric 1 2 3
 	saveCorrectnessJson(runId, ts, db)  // metric 4 13
 	saveDNSSECJson(runId, ts, db)       // metric 5 6 7
+	saveRedunJson(runId, ts, db)        // metric 8
+	results, err := LoadAdversoResults()
+	if err != nil { // metric 10
+		log.Printf("No adverso results to save: %v", err)
+	} else {
+		saveAdversoJson(runId, ts, results)
+	}
 }
 
 // saveAvailabilityResults retrieves availability results from the database and saves them in JSON format.
@@ -550,7 +559,7 @@ func saveCorrectnessJson(runId int, ts string, db *sql.DB) {
 	}
 
 	// Save to JSON file
-	filename := fmt.Sprintf("%s/%d_CountCorrectness_%s.json", jsonsFolder, runId, ts)
+	filename := fmt.Sprintf("%s/%d_CorrectnessStats_%s.json", jsonsFolder, runId, ts)
 	file, err := os.Create(filename)
 	if err != nil {
 		panic(err)
@@ -589,6 +598,7 @@ func saveDNSSECJson(runId int, ts string, db *sql.DB) {
 	}
 
 	var results []DomainDNSSECResult
+	errorTypeCount := map[string]int{}
 
 	for rows.Next() {
 		var id int
@@ -603,6 +613,16 @@ func saveDNSSECJson(runId int, ts string, db *sql.DB) {
 		details, err := dbController.GetDNSSECFailDetails(id, db)
 		if err != nil {
 			log.Printf("Error obteniendo detalles para %s: %v", domain, err)
+		}
+
+		for _, d := range details {
+			if strings.HasPrefix(d, "ERROR[") {
+				parts := strings.Split(d, "[")
+				if len(parts) > 1 {
+					typ := strings.TrimSuffix(parts[1], "]")
+					errorTypeCount[typ]++
+				}
+			}
 		}
 
 		successRate := 0.0
@@ -640,8 +660,9 @@ func saveDNSSECJson(runId int, ts string, db *sql.DB) {
 
 	// Estructura final del JSON
 	data := map[string]interface{}{
-		"metric":  "5, 6, 7 - DNSSEC Validation Results",
-		"domains": results,
+		"metric":                "5, 6, 7, 9 - DNSSEC Validation Results and Error Classification",
+		"domains":               results,
+		"errors_classification": errorTypeCount,
 	}
 
 	encoder := json.NewEncoder(file)
@@ -650,7 +671,159 @@ func saveDNSSECJson(runId int, ts string, db *sql.DB) {
 		panic(err)
 	}
 
-	fmt.Printf("✓ Métricas 5, 6 y 7 guardadas en JSON para run_id=%d\n", runId)
+	fmt.Printf("✓ Métricas 5, 6, 7 y 9 guardadas en JSON para run_id=%d\n", runId)
+}
+
+func saveRedunJson(runId int, ts string, db *sql.DB) {
+	rows, err := dbController.GetRedundancy(runId, db)
+	if err != nil {
+		panic(err)
+	}
+	defer rows.Close()
+
+	type RedundancyResult struct {
+		Domain      string `json:"domain"`
+		SubnetCount int    `json:"subnet_count"`
+		Status      string `json:"status"`
+	}
+
+	var results []RedundancyResult
+	totalDomains := 0
+	totalSubnets := 0
+
+	for rows.Next() {
+		var id int
+		var domain string
+		var subnetCount int
+
+		if err := rows.Scan(&id, &domain, &subnetCount); err != nil {
+			log.Println("Error scanning redundancy row:", err)
+			continue
+		}
+
+		status := "OK"
+		if subnetCount <= 1 {
+			status = "NOT_OK"
+		}
+
+		results = append(results, RedundancyResult{
+			Domain:      domain,
+			SubnetCount: subnetCount,
+			Status:      status,
+		})
+
+		totalDomains++
+		totalSubnets += subnetCount
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Fatal(err)
+	}
+
+	// Calcular promedio de subredes por dominio
+	avgSubnets := 0.0
+	if totalDomains > 0 {
+		avgSubnets = float64(totalSubnets) / float64(totalDomains)
+	}
+
+	// Crear archivo JSON
+	filename := fmt.Sprintf("%s/%d_RedundancyStats_%s.json", jsonsFolder, runId, ts)
+	file, err := os.Create(filename)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+
+	data := map[string]interface{}{
+		"metric":      "8 - NS Redundancy and Distribution",
+		"num_domains": totalDomains,
+		"avg_subnets": fmt.Sprintf("%.2f", avgSubnets),
+		"domains":     results,
+	}
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(data); err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("✓ Métrica 8 guardada en JSON para run_id=%d\n", runId)
+}
+
+// SaveAdversoJson writes final Adverso results to a pretty JSON and removes the temp file.
+// results: map[string][]LISTADO.AdversoLoadResult
+func saveAdversoJson(runId int, ts string, results map[string][]LISTADO.AdversoLoadResult) {
+	// Helper JSON structure with latency in ms
+	type adversoJSONEntry struct {
+		IP        string  `json:"ip"`
+		Successes int     `json:"successes"`
+		Failures  int     `json:"failures"`
+		AvgMs     float64 `json:"avg_latency_ms"`
+	}
+
+	out := make(map[string][]adversoJSONEntry)
+	for domain, arr := range results {
+		for _, r := range arr {
+			avgMs := float64(r.AvgLatency) / float64(time.Millisecond)
+			out[domain] = append(out[domain], adversoJSONEntry{
+				IP:        r.IP,
+				Successes: r.Successes,
+				Failures:  r.Failures,
+				AvgMs:     math.Round(avgMs*100) / 100, // 2 decimals
+			})
+		}
+	}
+
+	filename := fmt.Sprintf("%s/%d_Adverso_%s.json", jsonsFolder, runId, ts)
+	f, err := os.Create(filename)
+	if err != nil {
+		panic(fmt.Errorf("creating adverso json file: %w", err))
+	}
+	defer f.Close()
+
+	data := map[string]interface{}{
+		"metric":           "10 - DNS load simulation (Adverse conditions)",
+		"qps":              50,
+		"duration_seconds": 10,
+		"results":          out,
+	}
+
+	enc := json.NewEncoder(f)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(data); err != nil {
+		panic(fmt.Errorf("encoding adverso json: %w", err))
+	}
+
+	fmt.Printf("✓ Métrica 10 guardada en JSON para run_id=%d", runId)
+
+	// Remove temp file (best-effort, log on error)
+	const tempFile = "temp_adverso_results.json"
+	if err := os.Remove(tempFile); err != nil {
+		// If not found or can't delete, no fatal; just log
+		log.Printf("warning: could not remove temp file %s: %v", tempFile, err)
+	} else {
+		fmt.Printf("✓ Archivo temporal %s eliminado\n", tempFile)
+	}
+}
+
+// LoadAdversoResults reads the temporary adverso results JSON file and returns the map.
+// If the file does not exist or decoding fails, it returns an empty map and an error.
+func LoadAdversoResults() (map[string][]LISTADO.AdversoLoadResult, error) {
+	const tempFile = "temp_adverso_results.json"
+
+	f, err := os.Open(tempFile)
+	if err != nil {
+		// If file doesn't exist, return empty map and the error so caller can decide.
+		return make(map[string][]LISTADO.AdversoLoadResult), fmt.Errorf("open temp file: %w", err)
+	}
+	defer f.Close()
+
+	var results map[string][]LISTADO.AdversoLoadResult
+	if err := json.NewDecoder(f).Decode(&results); err != nil {
+		return make(map[string][]LISTADO.AdversoLoadResult), fmt.Errorf("decode temp file: %w", err)
+	}
+
+	return results, nil
 }
 
 // saveCountDomainsWithCountNSIPExclusive retrieves and saves statistics about domains with exclusive nameserver IPs.

@@ -1325,3 +1325,14 @@ func GetDNSSECFailDetails(dnssecStatId int, db *sql.DB) ([]string, error) {
 	}
 	return details, rows.Err()
 }
+
+// GetRedundancy retrieves redundancy (subnet count) results for a given run.
+func GetRedundancy(runId int, db *sql.DB) (*sql.Rows, error) {
+	rows, err := db.Query(`
+		SELECT r.id, d.name, r.subnet_count
+		FROM redundancy_distribution r
+		JOIN domain d ON d.id = r.domain_id
+		WHERE r.run_id = $1
+	`, runId)
+	return rows, err
+}
