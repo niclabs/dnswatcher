@@ -777,24 +777,23 @@ func saveRedunJson(runId int, ts string, db *sql.DB) {
 
 // SaveAdversoJson writes final Adverso results to a pretty JSON and removes the temp file.
 // results: map[string][]LISTADO.AdversoLoadResult
-func saveAdversoJson(runId int, ts string, results map[string][]LISTADO.AdversoLoadResult) {
-	// Helper JSON structure with latency in ms
+func saveAdversoJson(runId int, ts string, results map[string][]LISTADO.AdversoResult) {
+	// Estructura para serializar en JSON
 	type adversoJSONEntry struct {
 		IP        string  `json:"ip"`
-		Successes int     `json:"successes"`
-		Failures  int     `json:"failures"`
-		AvgMs     float64 `json:"avg_latency_ms"`
+		Success   bool    `json:"success"`
+		LatencyMs float64 `json:"latency_ms"`
+		Error     string  `json:"error,omitempty"`
 	}
 
 	out := make(map[string][]adversoJSONEntry)
 	for domain, arr := range results {
 		for _, r := range arr {
-			avgMs := float64(r.AvgLatency) / float64(time.Millisecond)
 			out[domain] = append(out[domain], adversoJSONEntry{
 				IP:        r.IP,
-				Successes: r.Successes,
-				Failures:  r.Failures,
-				AvgMs:     math.Round(avgMs*100) / 100, // 2 decimals
+				Success:   r.Success,
+				LatencyMs: math.Round(r.ResponseTime.Seconds()*1000*100) / 100, // 2 decimales
+				Error:     r.Error,
 			})
 		}
 	}
@@ -807,10 +806,8 @@ func saveAdversoJson(runId int, ts string, results map[string][]LISTADO.AdversoL
 	defer f.Close()
 
 	data := map[string]interface{}{
-		"metric":           "10 - DNS load simulation (Adverse conditions)",
-		"qps":              50,
-		"duration_seconds": 10,
-		"results":          out,
+		"metric":  "10 - Comportamiento bajo condiciones adversas (simple)",
+		"results": out,
 	}
 
 	enc := json.NewEncoder(f)
@@ -819,33 +816,34 @@ func saveAdversoJson(runId int, ts string, results map[string][]LISTADO.AdversoL
 		panic(fmt.Errorf("encoding adverso json: %w", err))
 	}
 
-	fmt.Printf("✓ Métrica 10 guardada en JSON para run_id=%d", runId)
+	fmt.Printf("✓ Métrica 10 guardada en JSON para run_id=%d\n", runId)
 
-	// Remove temp file (best-effort, log on error)
+	// Intentar borrar el archivo temporal, si existe
 	const tempFile = "temp_adverso_results.json"
 	if err := os.Remove(tempFile); err != nil {
-		// If not found or can't delete, no fatal; just log
-		log.Printf("warning: could not remove temp file %s: %v", tempFile, err)
+		if !os.IsNotExist(err) {
+			log.Printf("warning: no se pudo eliminar archivo temporal %s: %v", tempFile, err)
+		}
 	} else {
 		fmt.Printf("✓ Archivo temporal %s eliminado\n", tempFile)
 	}
 }
 
-// LoadAdversoResults reads the temporary adverso results JSON file and returns the map.
-// If the file does not exist or decoding fails, it returns an empty map and an error.
-func LoadAdversoResults() (map[string][]LISTADO.AdversoLoadResult, error) {
+// LoadAdversoResults reads the temporary adverso results JSON file (non-extended version)
+// and returns the parsed results. If the file does not exist or decoding fails,
+// it returns an empty map and an error.
+func LoadAdversoResults() (map[string][]LISTADO.AdversoResult, error) {
 	const tempFile = "temp_adverso_results.json"
 
 	f, err := os.Open(tempFile)
 	if err != nil {
-		// If file doesn't exist, return empty map and the error so caller can decide.
-		return make(map[string][]LISTADO.AdversoLoadResult), fmt.Errorf("open temp file: %w", err)
+		return make(map[string][]LISTADO.AdversoResult), fmt.Errorf("open temp file: %w", err)
 	}
 	defer f.Close()
 
-	var results map[string][]LISTADO.AdversoLoadResult
+	var results map[string][]LISTADO.AdversoResult
 	if err := json.NewDecoder(f).Decode(&results); err != nil {
-		return make(map[string][]LISTADO.AdversoLoadResult), fmt.Errorf("decode temp file: %w", err)
+		return make(map[string][]LISTADO.AdversoResult), fmt.Errorf("decode temp file: %w", err)
 	}
 
 	return results, nil
