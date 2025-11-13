@@ -2,8 +2,11 @@ package dataCollector
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"log"
 	"net"
+	"os"
 	"runtime"
 	"strings"
 	"sync"
@@ -11,6 +14,7 @@ import (
 
 	_ "github.com/lib/pq"
 	"github.com/miekg/dns"
+	"github.com/niclabs/Observatorio/Implementaciones/LISTADO"
 	"github.com/niclabs/Observatorio/dbController"
 	"github.com/niclabs/Observatorio/dnsUtils"
 	"github.com/niclabs/Observatorio/geoIPUtils"
@@ -196,10 +200,11 @@ func InitializeDontProbeList(dpf string) (dontProbeList []*net.IPNet) {
 //   - port: Database port.
 //   - debugBool: Enables debug logging if true.
 //   - verboseBool: Enables verbose logging if true.
+//   - note: A note or description for the run to be stored in the database.
 //
 // Returns:
 //   - runId: The identifier of the created run in the database.
-func StartCollect(input string, c int, dbname string, user string, password string, host string, port int, debugBool bool, verboseBool bool) (runId int) {
+func StartCollect(input string, c int, dbname string, user string, password string, host string, port int, debugBool bool, verboseBool bool, note string) (runId int) {
 	url := fmt.Sprintf("postgres://%v:%v@%v:%v/%v?sslmode=disable",
 		user,
 		password,
@@ -213,7 +218,7 @@ func StartCollect(input string, c int, dbname string, user string, password stri
 	}
 	/*Initialize*/
 	concurrency = c
-	runId = dbController.NewRun(database)
+	runId = dbController.NewRun(database, note)
 	debug = debugBool
 	verbose = verboseBool
 
@@ -250,7 +255,16 @@ func createCollectorRoutines(db *sql.DB, inputFile string, runId int) {
 		return
 	}
 
+	domainIDs, err := loadDomainIDsFromDB(db)
+	if err != nil {
+		log.Printf("error cargando domainIDs: %v", err)
+		// can continue with empty map
+		domainIDs = make(map[string]int)
+	}
+
 	domain_list_size = len(domainsList)
+
+	domainsList_normalized := normalizeDomainsList(domainsList)
 
 	// Create the routines
 	domainsQueue := make(chan string, concurrency)
@@ -299,9 +313,81 @@ func createCollectorRoutines(db *sql.DB, inputFile string, runId int) {
 		defer availabilityWg.Done()
 		collectAvailabilityData(runId, db)
 	}()
-
 	// Wait for availability data collection to complete
 	availabilityWg.Wait()
+
+	// Run LISTADO Disponibilidad
+	availability2Wg := sync.WaitGroup{}
+	availability2Wg.Add(1)
+	// run in goroutine (or call directly if you don't want concurrency)
+	go func() {
+		defer availability2Wg.Done()
+		LISTADO.RunDisponibilidad(domainsList_normalized, runId, domainIDs, db)
+	}()
+	availability2Wg.Wait()
+
+	// Run LISTADO Correctness
+	correctnessWg := sync.WaitGroup{}
+	correctnessWg.Add(1)
+	go func() {
+		defer correctnessWg.Done()
+		LISTADO.RunCorrectness(domainsList, runId, db)
+	}()
+	correctnessWg.Wait()
+
+	// Run LISTADO DNSSEC
+	dnssecWg := sync.WaitGroup{}
+	dnssecWg.Add(1)
+	go func() {
+		defer dnssecWg.Done()
+		LISTADO.RunDNSSECStats(domainsList, runId, db)
+	}()
+	dnssecWg.Wait()
+
+	// Run LISTADO Redundancia
+	redundancyWg := sync.WaitGroup{}
+	redundancyWg.Add(1)
+	go func() {
+		defer redundancyWg.Done()
+		LISTADO.CheckRedundancia(domainsList_normalized, runId, domainIDs, db)
+	}()
+	redundancyWg.Wait()
+
+	// Run LISTADO NSID
+	nsidWg := sync.WaitGroup{}
+	nsidWg.Add(1)
+	go func() {
+		defer nsidWg.Done()
+		LISTADO.RunNSIDCheck(domainsList_normalized, runId, domainIDs, db)
+	}()
+	nsidWg.Wait()
+
+	// Run LISTADO Adverso
+	adversoWg := sync.WaitGroup{}
+	adversoWg.Add(1)
+	go func() {
+		defer adversoWg.Done()
+		RunAdversoMetric(domainsList)
+	}()
+	adversoWg.Wait()
+
+	// Run LISTADO RSS
+	rssWg := sync.WaitGroup{}
+	rssWg.Add(1)
+	go func() {
+		defer rssWg.Done()
+		RunRSSMetric()
+	}()
+	rssWg.Wait()
+
+	// Run LISTADO WebPresence
+	webPresenceWg := sync.WaitGroup{}
+	webPresenceWg.Add(1)
+	go func() {
+		defer webPresenceWg.Done()
+		LISTADO.RunWebPresence(domainsList_normalized, runId, domainIDs, db)
+	}()
+	webPresenceWg.Wait()
 
 	// Save the result of the execution
 	totalTime := (int)(time.Since(startTime).Nanoseconds())
@@ -973,10 +1059,9 @@ func getAndSaveDNSSECinfo(domainName string, domainNameServers []string, domainI
 //   - runId: The identifier for the current data collection run.
 //   - db: The database connection.
 func collectSingleDomainInfo(domainName string, runId int, db *sql.DB) {
-
 	var domainId int
 	// Create domain and save it in database
-	domainId = dbController.SaveDomain(domainName, runId, db)
+	domainId = dbController.SaveDomain(domainName, runId, db, true)
 
 	// Obtain NS records for the domain
 	var domainNameServers []string
@@ -1224,4 +1309,58 @@ func isIPInDontProbeList(ip net.IP) bool {
 		}
 	}
 	return false
+}
+
+// loadDomainIDsFromDB builds the domain->id map from the `domain` table for the given run.
+func loadDomainIDsFromDB(db *sql.DB) (map[string]int, error) {
+	rows, err := db.Query("SELECT id, name FROM domain WHERE enabled")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	domainIDs := make(map[string]int)
+	var id int
+	var name string
+	for rows.Next() {
+		if err := rows.Scan(&id, &name); err != nil {
+			continue
+		}
+		name = strings.TrimSpace(name)
+		lower := strings.ToLower(name)
+		noDot := strings.TrimSuffix(lower, ".")
+		fqdn := dns.Fqdn(noDot) // asegura el punto final
+
+		// Registrar varias claves para robustez
+		domainIDs[noDot] = id
+		domainIDs[fqdn] = id
+		domainIDs[lower] = id
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return domainIDs, nil
+}
+
+// Ejemplo de normalización de la lista leída con utils.ReadLines:
+// después de llamar a utils.ReadLines(inputFile) aplicar:
+func normalizeDomainsList(domains []string) []string {
+	for i, d := range domains {
+		d = strings.TrimSpace(d)
+		d = strings.ToLower(d)
+		domains[i] = d
+	}
+	return domains
+}
+
+func RunAdversoMetric(domains []string) {
+	results := LISTADO.RunAdverso(domains)
+	file, _ := os.Create("temp_adverso_results.json")
+	json.NewEncoder(file).Encode(results)
+}
+func RunRSSMetric() {
+	results := LISTADO.RunRSSMetrics()
+
+	file, _ := os.Create("temp_rss_results.json")
+	json.NewEncoder(file).Encode(results)
 }

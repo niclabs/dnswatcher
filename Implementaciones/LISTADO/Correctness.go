@@ -1,15 +1,29 @@
 package LISTADO
 
 import (
+	"database/sql"
 	"fmt"
 	"net"
 	"strings"
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/niclabs/Observatorio/dbController"
 )
 
 type CorrectnessStats struct {
+	TotalPos   int
+	SuccessPos int
+	FailPos    int
+	TotalNeg   int
+	SuccessNeg int
+	FailNeg    int
+}
+
+// CorrectnessRow have the values that are stored in the correctness_stats table.
+type CorrectnessRow struct {
+	IP         string
+	Version    string // "-v4" o "-v6"
 	TotalPos   int
 	SuccessPos int
 	FailPos    int
@@ -35,7 +49,7 @@ var rootServers = []string{
 }
 
 // Versión que agrupa por TLD ÚNICO
-func RunCorrectness(domains []string) map[string]CorrectnessStats {
+func RunCorrectness(domains []string, runId int, db *sql.DB) map[string]CorrectnessStats {
 	fmt.Println("\n=== Punto 4 - RSI Correctness (TLD Único) ===")
 
 	result := make(map[string]CorrectnessStats)
@@ -64,8 +78,25 @@ func RunCorrectness(domains []string) map[string]CorrectnessStats {
 			fmt.Printf(" Validando NS IP %s\n", ipStr)
 			stats := validateAll(ipStr, tld, false)
 			result[ipStr+version] = stats
+
+			// Persistir resultado en BD si se pasó una conexión
+			if db != nil {
+				row := dbController.CorrectnessRow{
+					IP:         ipStr,
+					Version:    version,
+					TotalPos:   stats.TotalPos,
+					SuccessPos: stats.SuccessPos,
+					FailPos:    stats.FailPos,
+					TotalNeg:   stats.TotalNeg,
+					SuccessNeg: stats.SuccessNeg,
+					FailNeg:    stats.FailNeg,
+				}
+				dbController.SaveCorrectness(runId, row, db)
+				fmt.Printf("Successful: %s guardado\n", ipStr)
+			}
 		}
 	}
+	fmt.Println("=== Métrica 4 recolectada correctamente ===")
 
 	return result
 }

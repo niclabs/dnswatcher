@@ -1,11 +1,13 @@
 package LISTADO
 
 import (
+	"database/sql"
 	"fmt"
 	"net"
 	"strings"
 
 	"github.com/miekg/dns"
+	"github.com/niclabs/Observatorio/dbController"
 )
 
 // Resultado extendido para puntos 5, 6 y 7
@@ -17,7 +19,7 @@ type DNSSECStats struct {
 }
 
 // Ejecuta validación DS y tasa éxito/fallo
-func RunDNSSECStats(domains []string) map[string]DNSSECStats {
+func RunDNSSECStats(domains []string, runId int, db *sql.DB) map[string]DNSSECStats {
 	fmt.Println("\n=== Punto 5, 6 y 7 - DNSSEC Validation ===")
 	result := make(map[string]DNSSECStats)
 
@@ -83,7 +85,19 @@ func RunDNSSECStats(domains []string) map[string]DNSSECStats {
 		}
 
 		result[domain] = stats
+
+		// Persistir en BD si se proporciona conexión
+		if db != nil {
+			domainId := findDomainID(db, domain)
+			if err := dbController.SaveDNSSEC(runId, domainId, stats.Total, stats.Success, stats.Fail, stats.FailedDetails, db); err != nil {
+				fmt.Printf("Error guardando DNSSEC para %s: %v\n", domain, err)
+			} else {
+				fmt.Printf("Successful: DNSSEC guardado para %s (domain_id=%d)\n", domain, domainId)
+			}
+		}
 	}
+
+	fmt.Println("=== Métrica 5, 6 y 7 recolectada correctamente ===")
 
 	return result
 }
@@ -181,4 +195,36 @@ func verifyDSMatch(ds *dns.DS, key *dns.DNSKEY) bool {
 		return strings.EqualFold(ds.Digest, expected)
 	}
 	return false
+}
+
+// findDomainID intenta resolver el id del dominio en la tabla domain.
+// Devuelve 0 si no se encuentra o si db es nil.
+func findDomainID(db *sql.DB, domain string) int {
+	if db == nil {
+		return 0
+	}
+	var id int
+	try := func(query string, arg string) bool {
+		err := db.QueryRow(query, arg).Scan(&id)
+		return err == nil
+	}
+	// Intentos con variantes comunes
+	noDot := strings.TrimSuffix(domain, ".")
+	fqdn := dns.Fqdn(noDot)
+	lower := strings.ToLower(noDot)
+
+	if try("SELECT id FROM domain WHERE name = $1 LIMIT 1", domain) {
+		return id
+	}
+	if try("SELECT id FROM domain WHERE name = $1 LIMIT 1", noDot) {
+		return id
+	}
+	if try("SELECT id FROM domain WHERE name = $1 LIMIT 1", fqdn) {
+		return id
+	}
+	// intentar comparación case-insensitive
+	if try("SELECT id FROM domain WHERE lower(name) = lower($1) LIMIT 1", lower) {
+		return id
+	}
+	return 0
 }

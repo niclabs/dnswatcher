@@ -12,8 +12,6 @@ import (
 
 type DB struct{ *sql.DB }
 
-
-
 func OpenDBFromEnv() (DB, error) {
 	dsn := os.Getenv("PG_DSN")
 	if dsn == "" {

@@ -1,5 +1,6 @@
 package LISTADO
 
+/*
 import (
 	// "database/sql" -> Vincular la dirección a la db
 	"time"
@@ -8,9 +9,9 @@ import (
 // Disponibilidad
 func SaveAvailability(db DB, runID int, d DomainRow, ip string, ipVer int, proto string, ok bool, lat time.Duration) error {
 	_, err := db.Exec(
-		`INSERT INTO availability_observations(run_id, domain_id, ip, ip_version, proto, ok, latency_ms)
+		`INSERT INTO availability_observations(run_id, domain_id, ip, ip_version, photo, ok, latency_ms)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-		runID, d.ID, ip, ipVer, proto, ok, int(lat/time.Millisecond),
+		runID, d.ID, ip, ipVer, photo, ok, int(lat/time.Millisecond),
 	)
 	return err
 }
@@ -83,4 +84,4 @@ func SaveWebPresence(db DB, runID int, d DomainRow, hostKind, scheme, url, final
 		runID, d.ID, hostKind, scheme, url, final, status, reachable, tlsCN, int(lat/time.Millisecond), bodyHash, errStr,
 	)
 	return err
-}
+}*/

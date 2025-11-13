@@ -1,12 +1,14 @@
 package LISTADO
 
 import (
+	"database/sql"
 	"fmt"
 	"net"
 	"strings"
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/niclabs/Observatorio/dbController"
 )
 
 // Datos resumidos
@@ -27,7 +29,7 @@ type DisponibilidadStats struct {
 }
 
 // Ejecuta resolución A/AAAA + UDP/TCP
-func RunDisponibilidad(domains []string) DisponibilidadStats {
+func RunDisponibilidad(domains []string, runId int, domainIDs map[string]int, db *sql.DB) DisponibilidadStats {
 	fmt.Println("=== Punto 1 & 2 & 3 - RSI Availability & Response Latency ===")
 
 	stats := DisponibilidadStats{
@@ -44,10 +46,12 @@ func RunDisponibilidad(domains []string) DisponibilidadStats {
 		ipv4s := resolveDNS(domain, dns.TypeA)
 		ipv6s := resolveDNS(domain, dns.TypeAAAA)
 
+		domainId := lookupDomainID(domain, domainIDs)
+
 		if len(ipv4s) == 0 {
 			fmt.Println("  IPv4: No disponible")
 		} else {
-			fmt.Printf("  IPv4: %s\n", strings.Join(ipv4s, ", "))
+			//fmt.Printf("  IPv4: %s\n", strings.Join(ipv4s, ", "))
 			for _, ip := range ipv4s {
 				okUDP, latencyUDP := testTransport(ip, false)
 				okTCP, latencyTCP := testTransport(ip, true)
@@ -64,8 +68,20 @@ func RunDisponibilidad(domains []string) DisponibilidadStats {
 					stats.LatenciasTCP = append(stats.LatenciasTCP, latencyTCP)
 				}
 
-				fmt.Printf("    IP: %s | UDP: %v (%.2fms) | TCP: %v (%.2fms)\n",
-					ip, okUDP, latencyUDP.Seconds()*1000, okTCP, latencyTCP.Seconds()*1000)
+				// Guardar en BD: ahora SIEMPRE llamamos y la función manejará NULL si domainId==0
+				if db != nil {
+					dbController.SaveAvailabilityObservation(runId, domainId, ip, 4, "UDP", okUDP, latencyUDP, db)
+					dbController.SaveAvailabilityObservation(runId, domainId, ip, 4, "TCP", okTCP, latencyTCP, db)
+					if domainId != 0 {
+						fmt.Printf("Successful: SI se encontró domain_id para %s, guardado\n", domain)
+
+					} else {
+						fmt.Printf("Failed: NO se encontró domain_id para %s, guardado con domain_id=0\n", domain)
+					}
+				}
+
+				//fmt.Printf("    IP: %s | UDP: %v (%.2fms) | TCP: %v (%.2fms)\n",
+				//	ip, okUDP, latencyUDP.Seconds()*1000, okTCP, latencyTCP.Seconds()*1000)
 			}
 		}
 
@@ -89,8 +105,19 @@ func RunDisponibilidad(domains []string) DisponibilidadStats {
 					stats.LatenciasTCP = append(stats.LatenciasTCP, latencyTCP)
 				}
 
-				fmt.Printf("    IP: %s | UDP: %v (%.2fms) | TCP: %v (%.2fms)\n",
-					ip, okUDP, latencyUDP.Seconds()*1000, okTCP, latencyTCP.Seconds()*1000)
+				// Guardar en BD: igual que IPv4
+				if db != nil {
+					dbController.SaveAvailabilityObservation(runId, domainId, ip, 6, "UDP", okUDP, latencyUDP, db)
+					dbController.SaveAvailabilityObservation(runId, domainId, ip, 6, "TCP", okTCP, latencyTCP, db)
+					if domainId != 0 {
+						fmt.Printf("Successful: SI se encontró domain_id para %s, guardado\n", domain)
+					} else {
+						fmt.Printf("Failed: NO se encontró domain_id para %s, guardado con domain_id=0\n", domain)
+					}
+				}
+
+				//fmt.Printf("    IP: %s | UDP: %v (%.2fms) | TCP: %v (%.2fms)\n",
+				//	ip, okUDP, latencyUDP.Seconds()*1000, okTCP, latencyTCP.Seconds()*1000)
 			}
 		}
 	}
@@ -110,22 +137,22 @@ func RunDisponibilidad(domains []string) DisponibilidadStats {
 			stats.IPv6TCP++
 		}
 	}
-
+	fmt.Println("=== Métrica 1 & 2 & 3 recolectada correctamente ===")
 	// Resumen general
-	fmt.Println("\n--- Resumen RSI Availability & Transporte ---")
-	fmt.Printf("Cantidad total de direcciones (SIN REPETICIONES):\n")
-	fmt.Printf("IPv4: %d\n", len(stats.IPv4Set))
-	fmt.Printf("IPv6: %d\n", len(stats.IPv6Set))
+	//fmt.Println("\n--- Resumen RSI Availability & Transporte ---")
+	//fmt.Printf("Cantidad total de direcciones (SIN REPETICIONES):\n")
+	//fmt.Printf("IPv4: %d\n", len(stats.IPv4Set))
+	//fmt.Printf("IPv6: %d\n", len(stats.IPv6Set))
 
-	fmt.Printf("\nCantidad total de direcciones (CON REPETICIONES):\n")
-	fmt.Printf("IPv4: %d\n", stats.IPv4Total)
-	fmt.Printf("IPv6: %d\n", stats.IPv6Total)
+	//fmt.Printf("\nCantidad total de direcciones (CON REPETICIONES):\n")
+	//fmt.Printf("IPv4: %d\n", stats.IPv4Total)
+	//fmt.Printf("IPv6: %d\n", stats.IPv6Total)
 
-	fmt.Printf("\nDisponibilidad por tipo de transporte:\n")
-	fmt.Printf("IPv4 UDP: %d\n", stats.IPv4UDP)
-	fmt.Printf("IPv4 TCP: %d\n", stats.IPv4TCP)
-	fmt.Printf("IPv6 UDP: %d\n", stats.IPv6UDP)
-	fmt.Printf("IPv6 TCP: %d\n", stats.IPv6TCP)
+	//fmt.Printf("\nDisponibilidad por tipo de transporte:\n")
+	//fmt.Printf("IPv4 UDP: %d\n", stats.IPv4UDP)
+	//fmt.Printf("IPv4 TCP: %d\n", stats.IPv4TCP)
+	//fmt.Printf("IPv6 UDP: %d\n", stats.IPv6UDP)
+	//fmt.Printf("IPv6 TCP: %d\n", stats.IPv6TCP)
 
 	return stats
 }
@@ -183,4 +210,22 @@ func testTransport(ip string, useTCP bool) (bool, time.Duration) {
 	}
 
 	return true, latency
+}
+
+// helper: busca el id normalizando formas comunes
+func lookupDomainID(domain string, domainIDs map[string]int) int {
+	// directo
+	if id, ok := domainIDs[domain]; ok {
+		return id
+	}
+	// FQDN con punto final
+	if id, ok := domainIDs[dns.Fqdn(domain)]; ok {
+		return id
+	}
+	// sin posible punto final
+	noDot := strings.TrimSuffix(domain, ".")
+	if id, ok := domainIDs[noDot]; ok {
+		return id
+	}
+	return 0
 }

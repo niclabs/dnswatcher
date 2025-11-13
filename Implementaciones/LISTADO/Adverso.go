@@ -42,11 +42,13 @@ func RunAdverso(domains []string) map[string][]AdversoResult {
 			}
 			res := simulateLatencyQuery(ip)
 			results[domain] = append(results[domain], res)
-			fmt.Printf("  IP %s -> Success: %v | Tiempo: %.2fms | Error: %s\n",
-				res.IP, res.Success, res.ResponseTime.Seconds()*1000, res.Error)
+			//fmt.Printf("  IP %s -> Success: %v | Tiempo: %.2fms | Error: %s\n",
+			//	res.IP, res.Success, res.ResponseTime.Seconds()*1000, res.Error)
 		}
 
 	}
+
+	fmt.Println("=== Métrica 10 recolectada correctamente ===")
 
 	return results
 }
@@ -110,6 +112,7 @@ func RunAdversoConCarga(domains []string, qps int, dur time.Duration) map[string
 				loadResult.IP, loadResult.Successes, loadResult.Failures, loadResult.AvgLatency.Seconds()*1000)
 		}
 	}
+	fmt.Println("=== Métrica 10 recolectada correctamente ===")
 
 	return results
 }

@@ -1,14 +1,16 @@
 package main
 
 import (
-	"MAIN/LISTADO"
 	"bufio"
 	"fmt"
+	"github.com/niclabs/Observatorio/Implementaciones/LISTADO"
 	"os"
 	"sort"
 	"strings"
 	"time"
 )
+
+// change import later !!
 
 func calculateMedian(values []time.Duration) time.Duration {
 	if len(values) == 0 {

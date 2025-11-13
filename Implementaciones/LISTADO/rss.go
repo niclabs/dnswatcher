@@ -69,6 +69,7 @@ func RunRSSMetrics() []RootMetric {
 
 		results = append(results, r)
 	}
+	fmt.Println("=== Métrica 11 recolectada correctamente ===")
 
 	return results
 }

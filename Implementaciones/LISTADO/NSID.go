@@ -1,11 +1,13 @@
 package LISTADO
 
 import (
+	"database/sql"
 	"fmt"
 	"net"
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/niclabs/Observatorio/dbController"
 )
 
 type NSIDResult struct {
@@ -15,7 +17,9 @@ type NSIDResult struct {
 	Latency time.Duration
 }
 
-func RunNSIDCheck(domains []string) map[string][]NSIDResult {
+// RunNSIDCheck runs the NSID inclusion checks for the given domains.
+// Signature extended to accept runId, domainIDs map and db connection to optionally save results.
+func RunNSIDCheck(domains []string, runId int, domainIDs map[string]int, db *sql.DB) map[string][]NSIDResult {
 	fmt.Println("\n=== Punto 12 - Inclusión de NSID ===")
 	results := make(map[string][]NSIDResult)
 
@@ -61,10 +65,26 @@ func RunNSIDCheck(domains []string) map[string][]NSIDResult {
 			}
 
 			domainResults = append(domainResults, res)
-			fmt.Printf("  %s -> NSID: %s | Latencia: %.2fms | Error: %s\n", res.Server, res.NSID, latency.Seconds()*1000, res.Error)
+			//fmt.Printf("  %s -> NSID: %s | Latencia: %.2fms | Error: %s\n", res.Server, res.NSID, latency.Seconds()*1000, res.Error)
+
+			// Persistir en BD si se entregó conexión
+			if db != nil {
+				domainID := lookupDomainID(domain, domainIDs)
+				// lanzar goroutine no bloqueante para insertar y la función manejará NULL si domainId==0
+				go func(r NSIDResult, dID int) {
+					if err := dbController.SaveNSID(runId, dID, r.Server, r.NSID, r.Error, r.Latency, db); err != nil {
+						fmt.Println("SaveNSID error:", err, " domainID:", dID, " server:", r.Server)
+					}
+				}(res, domainID)
+				if domainID != 0 {
+					fmt.Printf("Successful: SI se encontró domain_id para %s, guardado\n", domain)
+				} else {
+					fmt.Printf("Failed: NO se encontró domain_id para %s, guardado con domain_id=0\n", domain)
+				}
+			}
 		}
 		results[domain] = domainResults
 	}
-
+	fmt.Println("=== Métrica 12 recolectada correctamente ===")
 	return results
 }

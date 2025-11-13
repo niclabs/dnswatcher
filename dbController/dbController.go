@@ -28,14 +28,14 @@ import (
 // Panics if any table creation fails.
 func CreateTables(db *sql.DB, drop bool) {
 	DropTable("runs", db, drop)
-	_, err := db.Exec("CREATE TABLE  IF NOT EXISTS runs ( id SERIAL PRIMARY KEY, tstmp timestamp, correct_run bool, duration int)")
+	_, err := db.Exec("CREATE TABLE  IF NOT EXISTS runs ( id SERIAL PRIMARY KEY, tstmp timestamp, correct_run bool, duration int, note text)")
 	if err != nil {
 		fmt.Println("OpenConnections", db.Stats())
 		panic(err)
 	}
 
 	DropTable("domain", db, drop)
-	_, err = db.Exec("CREATE TABLE  IF NOT EXISTS domain ( id SERIAL PRIMARY KEY, run_id integer REFERENCES runs(id),name varchar(253), soa bool, non_existence_status int, nsec bool, nsecok bool, nsec3 bool, nsec3ok bool, wildcard bool, dnssec_ok bool, ds_found bool, ds_ok bool, dnskey_found bool, dnskey_ok bool)")
+	_, err = db.Exec("CREATE TABLE  IF NOT EXISTS domain ( id SERIAL PRIMARY KEY, run_id integer REFERENCES runs(id),name varchar(253) unique not null, enabled bool not null default true, soa bool, non_existence_status int, nsec bool, nsecok bool, nsec3 bool, nsec3ok bool, wildcard bool, dnssec_ok bool, ds_found bool, ds_ok bool, dnskey_found bool, dnskey_ok bool)")
 	if err != nil {
 		fmt.Println("OpenConnections", db.Stats())
 		panic(err)
@@ -89,9 +89,45 @@ func CreateTables(db *sql.DB, drop bool) {
 		fmt.Println("OpenConnections", db.Stats())
 		panic(err)
 	}
-	// Creamos tabla para almacenar metricas de disponibilidad por transporte y dirección
-	DropTable("availability_metrics", db, drop)
-	_, err = db.Exec("CREATE TABLE IF NOT EXISTS availability_metrics ( id SERIAL PRIMARY KEY, run_id integer REFERENCES runs(id), address VARCHAR(10), transport VARCHAR(10), duration FLOAT, correct bool, success_count INTEGER, total_count INTEGER, availability FLOAT)")
+	// new tables
+	DropTable("availability_observations", db, drop)
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS availability_observations ( id SERIAL PRIMARY KEY, run_id integer not null REFERENCES runs(id), domain_id integer not null REFERENCES domain(id), ip inet not null, ip_version smallint not null, proto varchar(3) not null, ok bool not null, latency_ms integer, observer_at timestamp not null default now())")
+	if err != nil {
+		fmt.Println("OpenConnections", db.Stats())
+		panic(err)
+	}
+	DropTable("correctness_stats", db, drop)
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS correctness_stats ( id SERIAL PRIMARY KEY, run_id integer not null REFERENCES runs(id), ip text not null, version varchar(3) not null, total_pos integer not null, success_pos integer not null, fail_pos integer not null, total_neg integer not null, success_neg integer not null, fail_neg integer not null)")
+	if err != nil {
+		fmt.Println("OpenConnections", db.Stats())
+		panic(err)
+	}
+	DropTable("dnssec_stats", db, drop)
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS dnssec_stats ( id SERIAL PRIMARY KEY, run_id integer not null REFERENCES runs(id), domain_id integer not null REFERENCES domain(id), total integer not null, success integer not null, fail integer not null)")
+	if err != nil {
+		fmt.Println("OpenConnections", db.Stats())
+		panic(err)
+	}
+	DropTable("dnssec_fail_details", db, drop)
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS dnssec_fail_details ( id SERIAL PRIMARY KEY, dnssec_stat_id integer not null REFERENCES dnssec_stats(id) on delete cascade, detail text not null)")
+	if err != nil {
+		fmt.Println("OpenConnections", db.Stats())
+		panic(err)
+	}
+	DropTable("redundancy_distribution", db, drop)
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS redundancy_distribution ( id SERIAL PRIMARY KEY, run_id integer not null REFERENCES runs(id), domain_id integer not null REFERENCES domain(id), subnet_count integer not null)")
+	if err != nil {
+		fmt.Println("OpenConnections", db.Stats())
+		panic(err)
+	}
+	DropTable("nsid_results", db, drop)
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS nsid_results ( id SERIAL PRIMARY KEY, run_id integer not null REFERENCES runs(id), domain_id integer not null REFERENCES domain(id), server text not null, nsid text, error text, latency_ms integer)")
+	if err != nil {
+		fmt.Println("OpenConnections", db.Stats())
+		panic(err)
+	}
+	DropTable("web_presence", db, drop)
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS web_presence ( id SERIAL PRIMARY KEY, run_id integer not null REFERENCES runs(id), domain_id integer not null REFERENCES domain(id), host_kind varchar(3) not null, scheme varchar(5) not null, url text not null, final_url text, status_code integer, reachable bool not null, tls_cn text, latency_ms integer, body_hash text, error text)")
 	if err != nil {
 		fmt.Println("OpenConnections", db.Stats())
 		panic(err)
@@ -124,12 +160,20 @@ func DropTable(table string, db *sql.DB, drop bool) {
 //
 // Parameters:
 //   - db: pointer to the SQL database connection.
+//   - note: optional note describing the run (can be empty).
 //
 // Returns:
 //   - int: the ID of the newly created run.
-func NewRun(db *sql.DB) int {
+//
+// The function inserts a new row in the runs table with the current timestamp (started_at)
+// and the provided note, then returns the generated run ID.
+func NewRun(db *sql.DB, note string) int {
 	var runId int
-	err := db.QueryRow("INSERT INTO runs(tstmp) VALUES($1) RETURNING id", time.Now()).Scan(&runId)
+	err := db.QueryRow(
+		"INSERT INTO runs(tstmp, note) VALUES($1, $2) RETURNING id",
+		time.Now(),
+		note,
+	).Scan(&runId)
 	if err != nil {
 		fmt.Println("OpenConnections", db.Stats())
 		panic(err)
@@ -166,13 +210,18 @@ func SaveCorrectRun(runId int, duration int, correct bool, db *sql.DB) {
 //
 // Returns:
 //   - int: the ID of the newly created domain.
-func SaveDomain(line string, runId int, db *sql.DB) int {
+func SaveDomain(line string, runId int, db *sql.DB, enabled bool) int {
 	var domainid int
-	err := db.QueryRow("INSERT INTO domain(name, run_id) VALUES($1,$2) RETURNING id", line, runId).Scan(&domainid)
+	err := db.QueryRow(
+		"INSERT INTO domain(name, run_id, enabled) VALUES($1,$2, $3) ON CONFLICT (name) DO UPDATE SET enabled = EXCLUDED.enabled RETURNING id",
+		line,
+		runId,
+		enabled,
+	).Scan(&domainid)
 	if err != nil {
 		fmt.Println("OpenConnections", db.Stats(), "domain name", line)
 		if strings.Contains(err.Error(), "too many open files") {
-			return SaveDomain(line, runId, db)
+			return SaveDomain(line, runId, db, enabled)
 		}
 		panic(err)
 	}
@@ -232,6 +281,122 @@ func SaveDNSKEY(dnskey *dns.DNSKEY, dsok bool, domainId int, runId int, db *sql.
 		fmt.Println("OpenConnections", db.Stats(), " DomainId: ", domainId)
 		panic(err)
 	}
+}
+
+// ---
+// new function to save availability results
+// SaveAvailabilityObservation inserta una observación de disponibilidad.
+func SaveAvailabilityObservation(runId int, domainId int, ip string, ipVersion int, proto string, ok bool, latency time.Duration, db *sql.DB) {
+	latMs := int(latency.Milliseconds())
+	var domainID sql.NullInt64
+	if domainId > 0 {
+		domainID = sql.NullInt64{Int64: int64(domainId), Valid: true}
+	} else {
+		domainID = sql.NullInt64{Valid: false}
+	}
+
+	_, err := db.Exec(
+		`INSERT INTO availability_observations(run_id, domain_id, ip, ip_version, proto, ok, latency_ms)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		runId, domainID, ip, ipVersion, proto, ok, latMs,
+	)
+	if err != nil {
+		fmt.Println("OpenConnections", db.Stats(), " domainId:", domainId, " ip:", ip)
+		panic(err)
+	}
+}
+
+// CorrectnessRow have the values that are stored in the correctness_stats table.
+type CorrectnessRow struct {
+	IP         string
+	Version    string // "-v4" o "-v6"
+	TotalPos   int
+	SuccessPos int
+	FailPos    int
+	TotalNeg   int
+	SuccessNeg int
+	FailNeg    int
+}
+
+// SaveCorrectness inserta una fila en correctness_stats.
+// Parámetros: runId, ip, version ("-v4"/"-v6"), totalPos, successPos, failPos, totalNeg, successNeg, failNeg, db
+func SaveCorrectness(runId int, r CorrectnessRow, db *sql.DB) {
+	_, err := db.Exec(
+		`INSERT INTO correctness_stats(run_id, ip, version, total_pos, success_pos, fail_pos, total_neg, success_neg, fail_neg)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		runId, r.IP, r.Version, r.TotalPos, r.SuccessPos, r.FailPos, r.TotalNeg, r.SuccessNeg, r.FailNeg,
+	)
+	if err != nil {
+		fmt.Println("OpenConnections", db.Stats(), " ip:", r.IP)
+		panic(err)
+	}
+}
+
+// SaveDNSSEC inserta un registro en dnssec_stats y sus detalles en dnssec_fail_details.
+func SaveDNSSEC(runId int, domainId int, total, success, fail int, details []string, db *sql.DB) error {
+	var id int
+	err := db.QueryRow(
+		"INSERT INTO dnssec_stats(run_id, domain_id, total, success, fail) VALUES($1,$2,$3,$4,$5) RETURNING id",
+		runId, domainId, total, success, fail,
+	).Scan(&id)
+	if err != nil {
+		return err
+	}
+	for _, det := range details {
+		if _, err := db.Exec("INSERT INTO dnssec_fail_details(dnssec_stat_id, detail) VALUES($1,$2)", id, det); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SaveRedundancy inserta un registro en redundancy_distribution.
+// Devuelve error para que el llamador decida cómo manejarlo
+func SaveRedundancy(runId int, domainId int, subnetCount int, db *sql.DB) error {
+	_, err := db.Exec("INSERT INTO redundancy_distribution(run_id, domain_id, subnet_count) VALUES($1,$2,$3)", runId, domainId, subnetCount)
+	if err != nil {
+		fmt.Println("OpenConnections", db.Stats(), " DomainId: ", domainId)
+	}
+	return err
+}
+
+// SaveNSID inserta un resultado NSID en la tabla nsid_results.
+func SaveNSID(runId int, domainId int, server string, nsid string, errStr string, latency time.Duration, db *sql.DB) error {
+	_, err := db.Exec(
+		`INSERT INTO nsid_results(run_id, domain_id, server, nsid, error, latency_ms)
+		 VALUES ($1,$2,$3,$4,$5,$6)`,
+		runId, domainId, server, nsid, errStr, int(latency.Milliseconds()),
+	)
+	if err != nil {
+		fmt.Println("OpenConnections", db.Stats(), " domainId:", domainId)
+	}
+	return err
+}
+
+// SaveWebPresence saves a web presence check result into the database.
+// Parameters:
+//   - domainId: domain ID from the domain table.
+//   - runID: the ID of the current run.
+//   - hostKind: 'APX' o 'WWW'.
+//   - scheme, urlStr, final: Check values.
+//   - status: HTTP status code (int).
+//   - reachable: whether the host was reachable (bool).
+//   - tlsCN, bodyHash, errStr: additional check details (strings).
+//   - lat: latency as time.Duration.
+//   - db: *sql.DB connection.
+//
+// If the insertion fails, it prints an error message to the console.
+func SaveWebPresence(domainId int, runID int, hostKind, scheme, urlStr, final string, status int, reachable bool, tlsCN, bodyHash, errStr string, lat time.Duration, db *sql.DB) error {
+	latencyMs := int(lat.Milliseconds())
+	_, err := db.Exec(
+		`INSERT INTO web_presence(run_id, domain_id, host_kind, scheme, url, final_url, status_code, reachable, tls_cn, latency_ms, body_hash, error)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		runID, domainId, hostKind, scheme, urlStr, final, status, reachable, tlsCN, latencyMs, bodyHash, errStr,
+	)
+	if err != nil {
+		fmt.Println("OpenConnections", db.Stats(), " domainId:", domainId)
+	}
+	return nil
 }
 
 // SaveAvailabilityResults inserts a new record into the `availability_metrics` table
@@ -1070,3 +1235,134 @@ func CountNameserverCharacteristics(runId int, db *sql.DB) (recursivity int, noR
 		    SUM(CASE WHEN loc_query = false then 1 ELSE 0 END) as no_loc_query, SUM(CASE WHEN loc_query = true then 1 ELSE 0 END)  as loc_query
 		from (select * from nameserver where run_id=$1 and response=true) as NS;`
 }*/
+
+// GetAvailabilityObservations retrieves all availability observations for a given run,
+// including IP address, IP version, transport protocol, reachability status, and latency.
+//
+// Parameters:
+//   - runId: the ID of the run to query.
+//   - db: pointer to the SQL database connection.
+//
+// Returns:
+//   - *sql.Rows: result set with columns ip, ip_version, proto, ok, and latency_ms.
+//   - error: any error encountered during the query execution.
+func GetAvailabilityObservations(runId int, db *sql.DB) (*sql.Rows, error) {
+	rows, err := db.Query(`
+		SELECT 
+			ip, 
+			ip_version, 
+			proto, 
+			ok, 
+			latency_ms
+		FROM availability_observations
+		WHERE run_id = $1
+	`, runId)
+	return rows, err
+}
+
+// CountDistinctDomainsInAvailability returns the number of distinct domains
+// with availability observations for a given run.
+//
+// Parameters:
+//   - runId: the ID of the run to query.
+//   - db: pointer to the SQL database connection.
+//
+// Returns:
+//   - int: the count of distinct domains.
+//   - error: any error encountered during the query execution.
+func CountDistinctDomainsInAvailability(runId int, db *sql.DB) (int, error) {
+	var count int
+	err := db.QueryRow(`
+		SELECT COUNT(DISTINCT domain_id) 
+		FROM availability_observations 
+		WHERE run_id = $1 AND domain_id IS NOT NULL
+	`, runId).Scan(&count)
+	return count, err
+}
+
+func GetCorrectnessStats(runId int, db *sql.DB) (*sql.Rows, error) {
+	rows, err := db.Query(`
+		SELECT ip, version, total_pos, success_pos, fail_pos, 
+		       total_neg, success_neg, fail_neg
+		FROM correctness_stats
+		WHERE run_id = $1
+	`, runId)
+	return rows, err
+}
+
+// GetDNSSECStats retrieves all DNSSEC statistics for a given run.
+func GetDNSSECStats(runId int, db *sql.DB) (*sql.Rows, error) {
+	rows, err := db.Query(`
+		SELECT ds.id, d.name, ds.total, ds.success, ds.fail
+		FROM dnssec_stats ds
+		JOIN domain d ON d.id = ds.domain_id
+		WHERE ds.run_id = $1
+	`, runId)
+	return rows, err
+}
+
+// GetDNSSECFailDetails retrieves all fail details associated with a given DNSSEC stat.
+func GetDNSSECFailDetails(dnssecStatId int, db *sql.DB) ([]string, error) {
+	query := `
+		SELECT detail 
+		FROM dnssec_fail_details 
+		WHERE dnssec_stat_id = $1
+	`
+	rows, err := db.Query(query, dnssecStatId)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var details []string
+	for rows.Next() {
+		var d string
+		if err := rows.Scan(&d); err != nil {
+			log.Println("Error scanning DNSSEC fail detail:", err)
+			continue
+		}
+		details = append(details, d)
+	}
+	return details, rows.Err()
+}
+
+// GetRedundancy retrieves redundancy (subnet count) results for a given run.
+func GetRedundancy(runId int, db *sql.DB) (*sql.Rows, error) {
+	rows, err := db.Query(`
+		SELECT r.id, d.name, r.subnet_count
+		FROM redundancy_distribution r
+		JOIN domain d ON d.id = r.domain_id
+		WHERE r.run_id = $1
+	`, runId)
+	return rows, err
+}
+
+// GetNSIDResults retrieves all NSID check results for a given run ID,
+// joining with the domain table to include domain names.
+func GetNSIDResults(runId int, db *sql.DB) (*sql.Rows, error) {
+	rows, err := db.Query(`
+		SELECT 
+			d.name AS domain_name,
+			n.server,
+			n.nsid,
+			n.error,
+			n.latency_ms
+		FROM nsid_results n
+		JOIN domain d ON n.domain_id = d.id
+		WHERE n.run_id = $1
+		ORDER BY d.name;
+	`, runId)
+	return rows, err
+}
+
+func GetWebPresence(runId int, db *sql.DB) (*sql.Rows, error) {
+	rows, err := db.Query(`
+		SELECT d.name, w.host_kind, w.scheme, w.url, w.final_url, w.status_code,
+		       w.reachable, w.tls_cn, w.latency_ms, w.body_hash, w.error
+		FROM web_presence w
+		JOIN domain d ON w.domain_id = d.id
+		WHERE w.run_id = $1
+		ORDER BY d.name, w.host_kind;
+	`, runId)
+	return rows, err
+}
