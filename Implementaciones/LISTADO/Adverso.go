@@ -22,6 +22,7 @@ type AdversoLoadResult struct {
 	AvgLatency time.Duration
 }
 
+// !!! este correr (con carga no)
 func RunAdverso(domains []string) map[string][]AdversoResult {
 	fmt.Println("\n=== Punto 10 - Pruebas bajo condiciones adversas ===")
 	results := make(map[string][]AdversoResult)

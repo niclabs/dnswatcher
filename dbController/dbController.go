@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/niclabs/Observatorio/Implementaciones/LISTADO"
 )
 
 // CreateTables creates all necessary tables in the database for the DNS analysis application.
@@ -1351,6 +1352,18 @@ func GetNSIDResults(runId int, db *sql.DB) (*sql.Rows, error) {
 		JOIN domain d ON n.domain_id = d.id
 		WHERE n.run_id = $1
 		ORDER BY d.name;
+	`, runId)
+	return rows, err
+}
+
+func GetWebPresence(runId int, db *sql.DB) (*sql.Rows, error) {
+	rows, err := db.Query(`
+		SELECT d.domain, w.host_kind, w.scheme, w.url, w.final_url, w.status_code,
+		       w.reachable, w.tls_cn, w.latency_ms, w.body_hash, w.error
+		FROM web_presence w
+		JOIN domain d ON w.domain_id = d.id
+		WHERE w.run_id = $1
+		ORDER BY d.domain, w.host_kind;
 	`, runId)
 	return rows, err
 }

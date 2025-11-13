@@ -255,6 +255,8 @@ func saveDispersion(runId int, ts string, db *sql.DB) {
 	} else {
 		saveRSSJson(runId, ts, rssResults)
 	}
+	saveNSIDJson(runId, ts, db) // metric 12
+	saveWebJson(runId, ts, db)  // metric 15
 
 }
 
@@ -1028,6 +1030,117 @@ func saveNSIDJson(runId int, ts string, db *sql.DB) {
 	}
 
 	fmt.Printf("✓ Métrica 12 guardada en JSON para run_id=%d", runId)
+}
+
+func saveWebJson(runId int, ts string, db *sql.DB) {
+	rows, err := dbController.GetWebPresence(runId, db)
+	if err != nil {
+		log.Fatalf("Error obteniendo datos de WebPresence: %v", err)
+	}
+	defer rows.Close()
+
+	// Estructura interna para cada host_kind (APX o WWW)
+	type HostResult struct {
+		Kind       string `json:"kind"`
+		Scheme     string `json:"scheme"`
+		URL        string `json:"url"`
+		FinalURL   string `json:"final_url,omitempty"`
+		StatusCode int    `json:"status_code,omitempty"`
+		Reachable  bool   `json:"reachable"`
+		TLSCN      string `json:"tls_cn,omitempty"`
+		LatencyMs  int    `json:"latency_ms,omitempty"`
+		BodyHash   string `json:"body_hash,omitempty"`
+		Error      string `json:"error,omitempty"`
+	}
+
+	// Estructura agrupada por dominio
+	type DomainWebPresence struct {
+		Domain       string       `json:"domain"`
+		Results      []HostResult `json:"results"`
+		AnyReachable bool         `json:"any_reachable"`
+	}
+
+	resultsByDomain := map[string]*DomainWebPresence{}
+
+	for rows.Next() {
+		var (
+			domain     string
+			hostKind   string
+			scheme     string
+			url        string
+			finalURL   sql.NullString
+			statusCode sql.NullInt64
+			reachable  bool
+			tlsCN      sql.NullString
+			latencyMs  sql.NullInt64
+			bodyHash   sql.NullString
+			errMsg     sql.NullString
+		)
+
+		if err := rows.Scan(
+			&domain, &hostKind, &scheme, &url, &finalURL, &statusCode,
+			&reachable, &tlsCN, &latencyMs, &bodyHash, &errMsg,
+		); err != nil {
+			log.Printf("Error escaneando fila WebPresence: %v", err)
+			continue
+		}
+
+		entry := HostResult{
+			Kind:       hostKind,
+			Scheme:     scheme,
+			URL:        url,
+			FinalURL:   finalURL.String,
+			StatusCode: int(statusCode.Int64),
+			Reachable:  reachable,
+			TLSCN:      tlsCN.String,
+			LatencyMs:  int(latencyMs.Int64),
+			BodyHash:   bodyHash.String,
+			Error:      errMsg.String,
+		}
+
+		if _, ok := resultsByDomain[domain]; !ok {
+			resultsByDomain[domain] = &DomainWebPresence{
+				Domain:       domain,
+				Results:      []HostResult{},
+				AnyReachable: false,
+			}
+		}
+		resultsByDomain[domain].Results = append(resultsByDomain[domain].Results, entry)
+		if reachable {
+			resultsByDomain[domain].AnyReachable = true
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Fatalf("Error al iterar filas WebPresence: %v", err)
+	}
+
+	// Transformar el mapa en slice ordenado
+	var output []DomainWebPresence
+	for _, v := range resultsByDomain {
+		output = append(output, *v)
+	}
+
+	// Guardar archivo JSON
+	filename := fmt.Sprintf("%s/%d_WebPresenceStats_%s.json", jsonsFolder, runId, ts)
+	file, err := os.Create(filename)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+
+	data := map[string]interface{}{
+		"metric":  "15 - Web Presence associated with domains",
+		"domains": output,
+	}
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(data); err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("✓ Métrica 15 guardada en JSON para run_id=%d\n", runId)
 }
 
 // saveCountDomainsWithCountNSIPExclusive retrieves and saves statistics about domains with exclusive nameserver IPs.
