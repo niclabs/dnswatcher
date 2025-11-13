@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
-	"github.com/niclabs/Observatorio/Implementaciones/LISTADO"
 )
 
 // CreateTables creates all necessary tables in the database for the DNS analysis application.
