@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -236,7 +237,8 @@ func saveDispersion(runId int, ts string, db *sql.DB) {
 	saveCountDomainsWithCountNSIPs(runId, ts, db)
 	saveCountDomainsWithCountNSIPExclusive(runId, ts, db)
 	saveAvailabilityResults(runId, ts, db)
-	//saveAvailabilityAndLatency(runId, ts) // metric 1 and 3
+	saveAvailabilityJson(runId, ts, db) // metric 1 2 3
+	saveCorrectnessJson(runId, ts, db)  // metric 4 13
 }
 
 // saveAvailabilityResults retrieves availability results from the database and saves them in JSON format.
@@ -296,21 +298,22 @@ func saveAvailabilityResults(runId int, ts string, db *sql.DB) {
 	}
 }
 
-// modificar después para que lea de la bd
-/*func saveAvailabilityAndLatency(runId int, ts string) {
-	// open file with domains
-	file, err := os.Open("input-example.txt")
+// saveAvailabilityJson generates and saves availability and latency metrics (Metrics 1, 2, 3) from database
+func saveAvailabilityJson(runId int, ts string, db *sql.DB) {
+	// Query availability_observations table
+	rows, err := dbController.GetAvailabilityObservations(runId, db)
 	if err != nil {
-		fmt.Println("Error leyendo archivo:", err)
-		return
+		panic(err)
 	}
-	defer file.Close()
+	defer rows.Close()
+
+	// Aggregate results
+	// stats := make(map[string]map[string]map[string]*LISTADO.DisponibilidadStats)
 
 	ipv4Set := make(map[string]bool)
 	ipv6Set := make(map[string]bool)
-
-	tcpSupport := make(map[string]bool)
 	udpSupport := make(map[string]bool)
+	tcpSupport := make(map[string]bool)
 
 	ipv4TotalCount, ipv6TotalCount := 0, 0
 	ipv4UDPCount, ipv4TCPCount := 0, 0
@@ -318,58 +321,65 @@ func saveAvailabilityResults(runId int, ts string, db *sql.DB) {
 
 	var latenciasUDP, latenciasTCP []time.Duration
 
-	scanner := bufio.NewScanner(file)
-	domainCount := 0
+	// Process rows
+	for rows.Next() {
+		var ip string
+		var ipVersion int
+		var transport string
+		var reachable bool
+		var latencyMs int
 
-	for scanner.Scan() {
-		domain := strings.TrimSpace(scanner.Text())
-		if domain == "" {
+		if err := rows.Scan(&ip, &ipVersion, &transport, &reachable, &latencyMs); err != nil {
+			log.Println("Error scanning row:", err)
 			continue
 		}
-		domainCount++
-		ipv4 := resolveDNS(domain, dns.TypeA)
-		ipv6 := resolveDNS(domain, dns.TypeAAAA)
 
-		for _, ip := range ipv4 {
-			okUDP, latencyUDP := measureLatency(ip, false)
-			okTCP, latencyTCP := measureLatency(ip, true)
+		latency := time.Duration(latencyMs) * time.Millisecond
 
+		// Count by IP version
+		if ipVersion == 4 {
 			ipv4Set[ip] = true
 			ipv4TotalCount++
-			if okUDP {
-				udpSupport[ip] = true
-				ipv4UDPCount++
-				latenciasUDP = append(latenciasUDP, latencyUDP)
-			}
-			if okTCP {
-				tcpSupport[ip] = true
-				ipv4TCPCount++
-				latenciasTCP = append(latenciasTCP, latencyTCP)
-			}
-		}
-
-		for _, ip := range ipv6 {
-			okUDP, latencyUDP := measureLatency(ip, false)
-			okTCP, latencyTCP := measureLatency(ip, true)
-
+		} else if ipVersion == 6 {
 			ipv6Set[ip] = true
 			ipv6TotalCount++
-			if okUDP {
+		}
+
+		// Count availability by transport and protocol
+		if reachable {
+			if transport == "UDP" {
 				udpSupport[ip] = true
-				ipv6UDPCount++
-				latenciasUDP = append(latenciasUDP, latencyUDP)
-			}
-			if okTCP {
+				latenciasUDP = append(latenciasUDP, latency)
+				if ipVersion == 4 {
+					ipv4UDPCount++
+				} else {
+					ipv6UDPCount++
+				}
+			} else if transport == "TCP" {
 				tcpSupport[ip] = true
-				ipv6TCPCount++
-				latenciasTCP = append(latenciasTCP, latencyTCP)
+				latenciasTCP = append(latenciasTCP, latency)
+				if ipVersion == 4 {
+					ipv4TCPCount++
+				} else {
+					ipv6TCPCount++
+				}
 			}
 		}
 	}
 
-	// save CountAvailabilityIP.json
+	if err := rows.Err(); err != nil {
+		log.Fatal(err)
+	}
+
+	// Count total domains in run
+	domainCount, err := dbController.CountDistinctDomainsInAvailability(runId, db)
+	if err != nil {
+		domainCount = 0
+	}
+
+	// Save Metric 1 & 2: CountAvailabilityIP.json
 	filename := fmt.Sprintf("%s/%d_CountAvailabilityIP_%s.json", jsonsFolder, runId, ts)
-	file, err = os.Create(filename)
+	file, err := os.Create(filename)
 	if err != nil {
 		panic(err)
 	}
@@ -377,6 +387,7 @@ func saveAvailabilityResults(runId int, ts string, db *sql.DB) {
 
 	data := []map[string]interface{}{
 		{
+			"metric":     "1, 2 - RSI Availability",
 			"numdomains": domainCount,
 			"unique_ipcount": map[string]int{
 				"IPv4": len(ipv4Set),
@@ -390,7 +401,7 @@ func saveAvailabilityResults(runId int, ts string, db *sql.DB) {
 				"UDP": len(udpSupport),
 				"TCP": len(tcpSupport),
 			},
-			"Summary by type of transport and protocol": map[string]int{
+			"summary_by_transport_and_protocol": map[string]int{
 				"IPv4_UDP_available": ipv4UDPCount,
 				"IPv4_TCP_available": ipv4TCPCount,
 				"IPv6_UDP_available": ipv6UDPCount,
@@ -398,13 +409,14 @@ func saveAvailabilityResults(runId int, ts string, db *sql.DB) {
 			},
 		},
 	}
+
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(data); err != nil {
 		panic(err)
 	}
 
-	// Save CountLatency.json
+	// Save Metric 3: CountLatency.json
 	filename = fmt.Sprintf("%s/%d_CountLatency_%s.json", jsonsFolder, runId, ts)
 	file, err = os.Create(filename)
 	if err != nil {
@@ -412,8 +424,10 @@ func saveAvailabilityResults(runId int, ts string, db *sql.DB) {
 	}
 	defer file.Close()
 
-	latency := make(map[string]map[string]interface{})
+	latency := make(map[string]interface{})
+	latency["metric"] = "3 - RSI Response Latency"
 
+	// Calculate UDP median latency
 	if len(latenciasUDP) > 0 {
 		sort.Slice(latenciasUDP, func(i, j int) bool { return latenciasUDP[i] < latenciasUDP[j] })
 		medianaUDP := latenciasUDP[len(latenciasUDP)/2]
@@ -421,11 +435,14 @@ func saveAvailabilityResults(runId int, ts string, db *sql.DB) {
 		if medianaUDP > 250*time.Millisecond {
 			estado = "NOT_OK"
 		}
-		latency["UDP_mediumlatency"] = map[string]interface{}{
-			"values_ms": float64(medianaUDP) / float64(time.Millisecond),
-			"status":    estado,
+		latency["UDP_median_latency"] = map[string]interface{}{
+			"value_ms":     float64(medianaUDP) / float64(time.Millisecond),
+			"status":       estado,
+			"threshold_ms": 250,
 		}
 	}
+
+	// Calculate TCP median latency
 	if len(latenciasTCP) > 0 {
 		sort.Slice(latenciasTCP, func(i, j int) bool { return latenciasTCP[i] < latenciasTCP[j] })
 		medianaTCP := latenciasTCP[len(latenciasTCP)/2]
@@ -433,9 +450,10 @@ func saveAvailabilityResults(runId int, ts string, db *sql.DB) {
 		if medianaTCP > 500*time.Millisecond {
 			estado = "NOT_OK"
 		}
-		latency["TCP_mediumlatency"] = map[string]interface{}{
-			"values_ms": float64(medianaTCP) / float64(time.Millisecond),
-			"status":    estado,
+		latency["TCP_median_latency"] = map[string]interface{}{
+			"value_ms":     float64(medianaTCP) / float64(time.Millisecond),
+			"status":       estado,
+			"threshold_ms": 500,
 		}
 	}
 
@@ -444,7 +462,113 @@ func saveAvailabilityResults(runId int, ts string, db *sql.DB) {
 	if err := encoder.Encode(latency); err != nil {
 		panic(err)
 	}
-}*/
+
+	fmt.Printf("✓ Métricas 1, 2 y 3 guardadas en JSON para run_id=%d\n", runId)
+}
+
+// saveCorrectnessJson generates and saves correctness statistics with calculated metrics for a given run.
+//
+// This function retrieves correctness data from the database, calculates success rates and PASS/FAIL status
+// for both positive and negative queries, and writes the results to a JSON file.
+//
+// Parameters:
+//   - runId: Identifier of the run to process.
+//   - ts: Timestamp string used for naming the output file.
+//   - db: Database connection used to retrieve correctness data.
+//
+// This function does not return a value; it panics on critical errors.
+func saveCorrectnessJson(runId int, ts string, db *sql.DB) {
+	rows, err := dbController.GetCorrectnessStats(runId, db)
+	if err != nil {
+		panic(err)
+	}
+	defer rows.Close()
+
+	// Map to aggregate stats per IP+version
+	statsMap := make(map[string]map[string]interface{})
+
+	// Process rows and calculate metrics
+	for rows.Next() {
+		var ip, version string
+		var totalPos, successPos, failPos int
+		var totalNeg, successNeg, failNeg int
+
+		if err := rows.Scan(&ip, &version, &totalPos, &successPos, &failPos,
+			&totalNeg, &successNeg, &failNeg); err != nil {
+			log.Println("Error scanning row:", err)
+			continue
+		}
+
+		key := ip + version
+
+		// Calculate percentages
+		var pctPos, pctNeg float64
+		if totalPos > 0 {
+			pctPos = (float64(successPos) / float64(totalPos)) * 100
+		}
+		if totalNeg > 0 {
+			pctNeg = (float64(successNeg) / float64(totalNeg)) * 100
+		}
+
+		// Determine status (PASS if >= 95%)
+		estadoPos := "FAIL"
+		if pctPos >= 95.0 {
+			estadoPos = "PASS"
+		}
+		estadoNeg := "FAIL"
+		if pctNeg >= 95.0 {
+			estadoNeg = "PASS"
+		}
+
+		statsMap[key] = map[string]interface{}{
+			"ip":      ip,
+			"version": version,
+			"positive_queries": map[string]interface{}{
+				"success":    successPos,
+				"total":      totalPos,
+				"percentage": pctPos,
+				"status":     estadoPos,
+			},
+			"negative_queries": map[string]interface{}{
+				"success":    successNeg,
+				"total":      totalNeg,
+				"percentage": pctNeg,
+				"status":     estadoNeg,
+			},
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Fatal(err)
+	}
+
+	// Convert map to slice for JSON output
+	data := make([]map[string]interface{}, 0, len(statsMap))
+	for _, stats := range statsMap {
+		data = append(data, stats)
+	}
+
+	// Save to JSON file
+	filename := fmt.Sprintf("%s/%d_CountCorrectness_%s.json", jsonsFolder, runId, ts)
+	file, err := os.Create(filename)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+
+	result := map[string]interface{}{
+		"metric":  "4, 13 - RSI Correctness",
+		"results": data,
+	}
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(result); err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("✓ Métrica 4 y 13 guardada en JSON para run_id=%d\n", runId)
+}
 
 // saveCountDomainsWithCountNSIPExclusive retrieves and saves statistics about domains with exclusive nameserver IPs.
 //

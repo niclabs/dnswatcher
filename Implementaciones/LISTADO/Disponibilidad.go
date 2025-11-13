@@ -137,7 +137,7 @@ func RunDisponibilidad(domains []string, runId int, domainIDs map[string]int, db
 			stats.IPv6TCP++
 		}
 	}
-	fmt.Println("=== Métrica 1 recolectada correctamente ===")
+	fmt.Println("=== Métrica 1 & 2 & 3 recolectada correctamente ===")
 	// Resumen general
 	//fmt.Println("\n--- Resumen RSI Availability & Transporte ---")
 	//fmt.Printf("Cantidad total de direcciones (SIN REPETICIONES):\n")

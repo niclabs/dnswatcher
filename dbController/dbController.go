@@ -1235,3 +1235,93 @@ func CountNameserverCharacteristics(runId int, db *sql.DB) (recursivity int, noR
 		    SUM(CASE WHEN loc_query = false then 1 ELSE 0 END) as no_loc_query, SUM(CASE WHEN loc_query = true then 1 ELSE 0 END)  as loc_query
 		from (select * from nameserver where run_id=$1 and response=true) as NS;`
 }*/
+
+// GetAvailabilityObservations retrieves all availability observations for a given run,
+// including IP address, IP version, transport protocol, reachability status, and latency.
+//
+// Parameters:
+//   - runId: the ID of the run to query.
+//   - db: pointer to the SQL database connection.
+//
+// Returns:
+//   - *sql.Rows: result set with columns ip, ip_version, proto, ok, and latency_ms.
+//   - error: any error encountered during the query execution.
+func GetAvailabilityObservations(runId int, db *sql.DB) (*sql.Rows, error) {
+	rows, err := db.Query(`
+		SELECT 
+			ip, 
+			ip_version, 
+			proto, 
+			ok, 
+			latency_ms
+		FROM availability_observations
+		WHERE run_id = $1
+	`, runId)
+	return rows, err
+}
+
+// CountDistinctDomainsInAvailability returns the number of distinct domains
+// with availability observations for a given run.
+//
+// Parameters:
+//   - runId: the ID of the run to query.
+//   - db: pointer to the SQL database connection.
+//
+// Returns:
+//   - int: the count of distinct domains.
+//   - error: any error encountered during the query execution.
+func CountDistinctDomainsInAvailability(runId int, db *sql.DB) (int, error) {
+	var count int
+	err := db.QueryRow(`
+		SELECT COUNT(DISTINCT domain_id) 
+		FROM availability_observations 
+		WHERE run_id = $1 AND domain_id IS NOT NULL
+	`, runId).Scan(&count)
+	return count, err
+}
+
+func GetCorrectnessStats(runId int, db *sql.DB) (*sql.Rows, error) {
+	rows, err := db.Query(`
+		SELECT ip, version, total_pos, success_pos, fail_pos, 
+		       total_neg, success_neg, fail_neg
+		FROM correctness_stats
+		WHERE run_id = $1
+	`, runId)
+	return rows, err
+}
+
+// GetDNSSECStats retrieves all DNSSEC statistics for a given run.
+func GetDNSSECStats(runId int, db *sql.DB) (*sql.Rows, error) {
+	rows, err := db.Query(`
+		SELECT ds.id, d.domain_name, ds.total, ds.success, ds.fail
+		FROM dnssec_stats ds
+		JOIN domain d ON d.id = ds.domain_id
+		WHERE ds.run_id = $1
+	`, runId)
+	return rows, err
+}
+
+// GetDNSSECFailDetails retrieves all fail details associated with a given DNSSEC stat.
+func GetDNSSECFailDetails(dnssecStatId int, db *sql.DB) ([]string, error) {
+	query := `
+		SELECT detail 
+		FROM dnssec_fail_details 
+		WHERE dnssec_stat_id = $1
+	`
+	rows, err := db.Query(query, dnssecStatId)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var details []string
+	for rows.Next() {
+		var d string
+		if err := rows.Scan(&d); err != nil {
+			log.Println("Error scanning DNSSEC fail detail:", err)
+			continue
+		}
+		details = append(details, d)
+	}
+	return details, rows.Err()
+}
