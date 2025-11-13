@@ -1293,7 +1293,7 @@ func GetCorrectnessStats(runId int, db *sql.DB) (*sql.Rows, error) {
 // GetDNSSECStats retrieves all DNSSEC statistics for a given run.
 func GetDNSSECStats(runId int, db *sql.DB) (*sql.Rows, error) {
 	rows, err := db.Query(`
-		SELECT ds.id, d.domain_name, ds.total, ds.success, ds.fail
+		SELECT ds.id, d.name, ds.total, ds.success, ds.fail
 		FROM dnssec_stats ds
 		JOIN domain d ON d.id = ds.domain_id
 		WHERE ds.run_id = $1

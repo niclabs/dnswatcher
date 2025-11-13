@@ -239,6 +239,7 @@ func saveDispersion(runId int, ts string, db *sql.DB) {
 	saveAvailabilityResults(runId, ts, db)
 	saveAvailabilityJson(runId, ts, db) // metric 1 2 3
 	saveCorrectnessJson(runId, ts, db)  // metric 4 13
+	saveDNSSECJson(runId, ts, db)       // metric 5 6 7
 }
 
 // saveAvailabilityResults retrieves availability results from the database and saves them in JSON format.
@@ -568,6 +569,88 @@ func saveCorrectnessJson(runId int, ts string, db *sql.DB) {
 	}
 
 	fmt.Printf("✓ Métrica 4 y 13 guardada en JSON para run_id=%d\n", runId)
+}
+
+func saveDNSSECJson(runId int, ts string, db *sql.DB) {
+	rows, err := dbController.GetDNSSECStats(runId, db)
+	if err != nil {
+		panic(err)
+	}
+	defer rows.Close()
+
+	type DomainDNSSECResult struct {
+		Domain        string   `json:"domain"`
+		Total         int      `json:"total"`
+		Success       int      `json:"success"`
+		Fail          int      `json:"fail"`
+		SuccessRate   float64  `json:"success_rate_percent"`
+		Status        string   `json:"status"`
+		FailedDetails []string `json:"failed_details,omitempty"`
+	}
+
+	var results []DomainDNSSECResult
+
+	for rows.Next() {
+		var id int
+		var domain string
+		var total, success, fail int
+
+		if err := rows.Scan(&id, &domain, &total, &success, &fail); err != nil {
+			log.Println("Error scanning DNSSEC row:", err)
+			continue
+		}
+
+		details, err := dbController.GetDNSSECFailDetails(id, db)
+		if err != nil {
+			log.Printf("Error obteniendo detalles para %s: %v", domain, err)
+		}
+
+		successRate := 0.0
+		if total > 0 {
+			successRate = float64(success) / float64(total) * 100
+		}
+
+		status := "OK"
+		if fail > 0 {
+			status = "NOT_OK"
+		}
+
+		results = append(results, DomainDNSSECResult{
+			Domain:        domain,
+			Total:         total,
+			Success:       success,
+			Fail:          fail,
+			SuccessRate:   successRate,
+			Status:        status,
+			FailedDetails: details,
+		})
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Fatal(err)
+	}
+
+	// Crear archivo JSON
+	filename := fmt.Sprintf("%s/%d_DNSSECStats_%s.json", jsonsFolder, runId, ts)
+	file, err := os.Create(filename)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+
+	// Estructura final del JSON
+	data := map[string]interface{}{
+		"metric":  "5, 6, 7 - DNSSEC Validation Results",
+		"domains": results,
+	}
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(data); err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("✓ Métricas 5, 6 y 7 guardadas en JSON para run_id=%d\n", runId)
 }
 
 // saveCountDomainsWithCountNSIPExclusive retrieves and saves statistics about domains with exclusive nameserver IPs.
