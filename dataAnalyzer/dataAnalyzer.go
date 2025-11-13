@@ -249,6 +249,13 @@ func saveDispersion(runId int, ts string, db *sql.DB) {
 	} else {
 		saveAdversoJson(runId, ts, results)
 	}
+	rssResults, err := LoadRSSResults()
+	if err != nil { // metric 11
+		log.Printf("No RSS results to save: %v", err)
+	} else {
+		saveRSSJson(runId, ts, rssResults)
+	}
+
 }
 
 // saveAvailabilityResults retrieves availability results from the database and saves them in JSON format.
@@ -592,7 +599,7 @@ func saveDNSSECJson(runId int, ts string, db *sql.DB) {
 		Total         int      `json:"total"`
 		Success       int      `json:"success"`
 		Fail          int      `json:"fail"`
-		SuccessRate   float64  `json:"success_rate_percent"`
+		SuccessRate   *float64 `json:"success_rate_percent,omitempty"`
 		Status        string   `json:"status"`
 		FailedDetails []string `json:"failed_details,omitempty"`
 	}
@@ -622,12 +629,23 @@ func saveDNSSECJson(runId int, ts string, db *sql.DB) {
 					typ := strings.TrimSuffix(parts[1], "]")
 					errorTypeCount[typ]++
 				}
+				continue
 			}
+			// casos no-error (zona sin firma) -> contar como NO_DNSSEC
+			trim := strings.TrimSpace(d)
+			if strings.HasPrefix(trim, "No hay DS ni DNSKEY") || strings.Contains(trim, "zona no firmada") {
+				errorTypeCount["NO_DNSSEC"]++
+			} else {
+				// opcional: contar otros mensajes libres bajo "OTHER"
+				errorTypeCount["OTHER"]++
+			}
+
 		}
 
-		successRate := 0.0
+		var sr *float64
 		if total > 0 {
-			successRate = float64(success) / float64(total) * 100
+			v := float64(success) / float64(total) * 100
+			sr = &v
 		}
 
 		status := "OK"
@@ -635,12 +653,17 @@ func saveDNSSECJson(runId int, ts string, db *sql.DB) {
 			status = "NOT_OK"
 		}
 
+		// Si no hubo elementos y el detalle indica zona no firmada, marcar explícitamente
+		if total == 0 && len(details) == 1 && strings.HasPrefix(strings.TrimSpace(details[0]), "No hay DS ni DNSKEY") {
+			status = "NO_DNSSEC"
+		}
+
 		results = append(results, DomainDNSSECResult{
 			Domain:        domain,
 			Total:         total,
 			Success:       success,
 			Fail:          fail,
-			SuccessRate:   successRate,
+			SuccessRate:   sr,
 			Status:        status,
 			FailedDetails: details,
 		})
@@ -824,6 +847,187 @@ func LoadAdversoResults() (map[string][]LISTADO.AdversoLoadResult, error) {
 	}
 
 	return results, nil
+}
+
+// SaveRSSJson writes final RSS metrics to a pretty JSON file and removes the temporary one.
+func saveRSSJson(runId int, ts string, results []LISTADO.RootMetric) {
+	type rssJSONEntry struct {
+		Server       string  `json:"server"`
+		Success      bool    `json:"success"`
+		ResponseTime float64 `json:"response_time_ms"`
+		Error        string  `json:"error,omitempty"`
+	}
+
+	var out []rssJSONEntry
+	var total, success int
+	var latencies []float64
+
+	for _, r := range results {
+		total++
+		entry := rssJSONEntry{
+			Server:       r.Server,
+			Success:      r.Success,
+			ResponseTime: math.Round(r.ResponseTime.Seconds()*100000) / 100, // 2 decimales
+			Error:        r.Error,
+		}
+
+		if r.Success {
+			success++
+			latencies = append(latencies, r.ResponseTime.Seconds()*1000)
+		}
+		out = append(out, entry)
+	}
+
+	porcentaje := float64(success) / float64(total) * 100
+	mediana := LISTADO.MedianDuration(convertToDurations(latencies))
+
+	filename := fmt.Sprintf("%s/%d_RssStats_%s.json", jsonsFolder, runId, ts)
+	f, err := os.Create(filename)
+	if err != nil {
+		panic(fmt.Errorf("creating RSS json file: %w", err))
+	}
+	defer f.Close()
+
+	data := map[string]interface{}{
+		"metric":                    "11 - RSS level Availability and Latency",
+		"total_servers":             total,
+		"successes":                 success,
+		"success_rate_percent":      math.Round(porcentaje*100) / 100,
+		"median_latency_ms_success": math.Round(mediana.Seconds()*100000) / 100,
+		"results":                   out,
+	}
+
+	enc := json.NewEncoder(f)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(data); err != nil {
+		panic(fmt.Errorf("encoding RSS json: %w", err))
+	}
+
+	fmt.Printf("✓ Métrica 11 guardada en JSON para run_id=%d", runId)
+
+	// Remove temp file
+	const tempFile = "temp_rss_results.json"
+	if err := os.Remove(tempFile); err != nil {
+		log.Printf("warning: could not remove temp file %s: %v", tempFile, err)
+	} else {
+		fmt.Printf("✓ Archivo temporal %s eliminado\n", tempFile)
+	}
+}
+
+// LoadRSSResults reads the temporary RSS metrics JSON file and returns the slice of RootMetric.
+func LoadRSSResults() ([]LISTADO.RootMetric, error) {
+	const tempFile = "temp_rss_results.json"
+
+	f, err := os.Open(tempFile)
+	if err != nil {
+		return nil, fmt.Errorf("open RSS temp file: %w", err)
+	}
+	defer f.Close()
+
+	var results []LISTADO.RootMetric
+	if err := json.NewDecoder(f).Decode(&results); err != nil {
+		return nil, fmt.Errorf("decode RSS temp file: %w", err)
+	}
+
+	return results, nil
+}
+
+func convertToDurations(latencies []float64) []time.Duration {
+	out := make([]time.Duration, len(latencies))
+	for i, ms := range latencies {
+		out[i] = time.Duration(ms * float64(time.Millisecond))
+	}
+	return out
+}
+
+// saveNSIDJson generates a JSON file with NSID inclusion results (metric 12) for a given run.
+func saveNSIDJson(runId int, ts string, db *sql.DB) {
+	rows, err := dbController.GetNSIDResults(runId, db)
+	if err != nil {
+		panic(fmt.Errorf("error getting NSID results: %w", err))
+	}
+	defer rows.Close()
+
+	type DomainNSIDResult struct {
+		Domain    string  `json:"domain"`
+		Server    string  `json:"server"`
+		NSID      string  `json:"nsid,omitempty"`
+		Error     string  `json:"error,omitempty"`
+		LatencyMS float64 `json:"latency_ms"`
+		Status    string  `json:"status"`
+	}
+
+	resultsByDomain := make(map[string][]DomainNSIDResult)
+
+	for rows.Next() {
+		var domain, server, nsid, errMsg sql.NullString
+		var latency sql.NullInt64
+
+		if err := rows.Scan(&domain, &server, &nsid, &errMsg, &latency); err != nil {
+			log.Println("Error scanning NSID row:", err)
+			continue
+		}
+
+		status := "OK"
+		if errMsg.Valid && errMsg.String != "" {
+			status = "FALLO: " + errMsg.String
+		} else if !nsid.Valid || nsid.String == "" {
+			status = "FALLO: sin NSID"
+		}
+
+		entry := DomainNSIDResult{
+			Domain:    domain.String,
+			Server:    server.String,
+			NSID:      nsid.String,
+			Error:     errMsg.String,
+			LatencyMS: float64(latency.Int64),
+			Status:    status,
+		}
+
+		resultsByDomain[domain.String] = append(resultsByDomain[domain.String], entry)
+	}
+
+	if err := rows.Err(); err != nil {
+		panic(fmt.Errorf("error reading NSID rows: %w", err))
+	}
+
+	// Build output JSON
+	filename := fmt.Sprintf("%s/%d_NSIDStats_%s.json", jsonsFolder, runId, ts)
+	file, err := os.Create(filename)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+
+	// Prepare summary
+	totalDomains := len(resultsByDomain)
+	var totalSuccess, totalFails int
+
+	for _, domainResults := range resultsByDomain {
+		for _, r := range domainResults {
+			if strings.HasPrefix(r.Status, "OK") {
+				totalSuccess++
+			} else {
+				totalFails++
+			}
+		}
+	}
+
+	data := map[string]interface{}{
+		"metric":            "12 - NSID Inclusion",
+		"total_domains":     totalDomains,
+		"total_success":     totalSuccess,
+		"total_failures":    totalFails,
+		"results_by_domain": resultsByDomain,
+	}
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(data); err != nil {
+		panic(fmt.Errorf("error encoding NSID json: %w", err))
+	}
+
+	fmt.Printf("✓ Métrica 12 guardada en JSON para run_id=%d", runId)
 }
 
 // saveCountDomainsWithCountNSIPExclusive retrieves and saves statistics about domains with exclusive nameserver IPs.

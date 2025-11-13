@@ -1336,3 +1336,21 @@ func GetRedundancy(runId int, db *sql.DB) (*sql.Rows, error) {
 	`, runId)
 	return rows, err
 }
+
+// GetNSIDResults retrieves all NSID check results for a given run ID,
+// joining with the domain table to include domain names.
+func GetNSIDResults(runId int, db *sql.DB) (*sql.Rows, error) {
+	rows, err := db.Query(`
+		SELECT 
+			d.name AS domain_name,
+			n.server,
+			n.nsid,
+			n.error,
+			n.latency_ms
+		FROM nsid_results n
+		JOIN domain d ON n.domain_id = d.id
+		WHERE n.run_id = $1
+		ORDER BY d.name;
+	`, runId)
+	return rows, err
+}

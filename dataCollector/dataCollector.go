@@ -380,6 +380,15 @@ func createCollectorRoutines(db *sql.DB, inputFile string, runId int) {
 	}()
 	adversoWg.Wait()
 
+	// Run LISTADO RSS
+	rssWg := sync.WaitGroup{}
+	rssWg.Add(1)
+	go func() {
+		defer rssWg.Done()
+		RunRSSMetric()
+	}()
+	rssWg.Wait()
+
 	// Save the result of the execution
 	totalTime := (int)(time.Since(startTime).Nanoseconds())
 	dbController.SaveCorrectRun(runId, totalTime, true, db)
