@@ -778,7 +778,6 @@ func saveRedunJson(runId int, ts string, db *sql.DB) {
 // SaveAdversoJson writes final Adverso results to a pretty JSON and removes the temp file.
 // results: map[string][]LISTADO.AdversoLoadResult
 func saveAdversoJson(runId int, ts string, results map[string][]LISTADO.AdversoResult) {
-	// Estructura para serializar en JSON
 	type adversoJSONEntry struct {
 		IP        string  `json:"ip"`
 		Success   bool    `json:"success"`
@@ -806,7 +805,7 @@ func saveAdversoJson(runId int, ts string, results map[string][]LISTADO.AdversoR
 	defer f.Close()
 
 	data := map[string]interface{}{
-		"metric":  "10 - Comportamiento bajo condiciones adversas (simple)",
+		"metric":  "10 - Adverse conditions (simple)",
 		"results": out,
 	}
 

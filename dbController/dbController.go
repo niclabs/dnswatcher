@@ -1357,12 +1357,12 @@ func GetNSIDResults(runId int, db *sql.DB) (*sql.Rows, error) {
 
 func GetWebPresence(runId int, db *sql.DB) (*sql.Rows, error) {
 	rows, err := db.Query(`
-		SELECT d.domain, w.host_kind, w.scheme, w.url, w.final_url, w.status_code,
+		SELECT d.name, w.host_kind, w.scheme, w.url, w.final_url, w.status_code,
 		       w.reachable, w.tls_cn, w.latency_ms, w.body_hash, w.error
 		FROM web_presence w
 		JOIN domain d ON w.domain_id = d.id
 		WHERE w.run_id = $1
-		ORDER BY d.domain, w.host_kind;
+		ORDER BY d.name, w.host_kind;
 	`, runId)
 	return rows, err
 }

@@ -22,7 +22,6 @@ type AdversoLoadResult struct {
 	AvgLatency time.Duration
 }
 
-// !!! este correr (con carga no)
 func RunAdverso(domains []string) map[string][]AdversoResult {
 	fmt.Println("\n=== Punto 10 - Pruebas bajo condiciones adversas ===")
 	results := make(map[string][]AdversoResult)
@@ -43,11 +42,13 @@ func RunAdverso(domains []string) map[string][]AdversoResult {
 			}
 			res := simulateLatencyQuery(ip)
 			results[domain] = append(results[domain], res)
-			fmt.Printf("  IP %s -> Success: %v | Tiempo: %.2fms | Error: %s\n",
-				res.IP, res.Success, res.ResponseTime.Seconds()*1000, res.Error)
+			//fmt.Printf("  IP %s -> Success: %v | Tiempo: %.2fms | Error: %s\n",
+			//	res.IP, res.Success, res.ResponseTime.Seconds()*1000, res.Error)
 		}
 
 	}
+
+	fmt.Println("=== Métrica 10 recolectada correctamente ===")
 
 	return results
 }

@@ -362,15 +362,6 @@ func createCollectorRoutines(db *sql.DB, inputFile string, runId int) {
 	}()
 	nsidWg.Wait()
 
-	// Run LISTADO WebPresence
-	webPresenceWg := sync.WaitGroup{}
-	webPresenceWg.Add(1)
-	go func() {
-		defer webPresenceWg.Done()
-		LISTADO.RunWebPresence(domainsList_normalized, runId, domainIDs, db)
-	}()
-	webPresenceWg.Wait()
-
 	// Run LISTADO Adverso
 	adversoWg := sync.WaitGroup{}
 	adversoWg.Add(1)
@@ -388,6 +379,15 @@ func createCollectorRoutines(db *sql.DB, inputFile string, runId int) {
 		RunRSSMetric()
 	}()
 	rssWg.Wait()
+
+	// Run LISTADO WebPresence
+	webPresenceWg := sync.WaitGroup{}
+	webPresenceWg.Add(1)
+	go func() {
+		defer webPresenceWg.Done()
+		LISTADO.RunWebPresence(domainsList_normalized, runId, domainIDs, db)
+	}()
+	webPresenceWg.Wait()
 
 	// Save the result of the execution
 	totalTime := (int)(time.Since(startTime).Nanoseconds())
@@ -1354,7 +1354,7 @@ func normalizeDomainsList(domains []string) []string {
 }
 
 func RunAdversoMetric(domains []string) {
-	results := LISTADO.RunAdversoConCarga(domains, 50, 10*time.Second)
+	results := LISTADO.RunAdverso(domains)
 	file, _ := os.Create("temp_adverso_results.json")
 	json.NewEncoder(file).Encode(results)
 }
