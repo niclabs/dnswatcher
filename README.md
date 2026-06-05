@@ -1,8 +1,6 @@
 # Observatorio
 Software desarrollado con el fin de recolectar y analizar datos DNS de un conjunto de dominios.
 
-
-
 ## Requisitos Generales
 #### Geolite
 Para poder geolocalizar las direcciones IP es necesario obtener una llave para usar los servicios de geolite, Maxmind. puedes registrarte [aquí](https://www.maxmind.com/en/geolite2/signup).
@@ -137,6 +135,35 @@ para obtener los archivos de la carpeta csvs ejecutar el siguiente comando:
         docker cp <containerID>:/Observatorio/csvs/ </local/dest/folder>
 
 reemplazando el id del container y la carpeta de destino que desea utilizar
+
+
+
+## Nuevos features
+
+Se busca implementar nuevas métricas alineadas al estándar [RSSAC047](https://www.icann.org/groups/ssac/rssac-047). Para cada dominio de entrada, realiza consultas DNS reales y evalúa las respuestas según los siguientes criterios:
+
+### Implementado
+
+- [x] **Disponibilidad por versión de IP (IPv4/IPv6)** — Evalúa si los NS responden correctamente por ambas versiones del protocolo. *(RSSAC047 §5.1)*
+- [x] **Disponibilidad por tipo de transporte (UDP/TCP)** — Verifica que los NS soporten consultas por UDP y TCP. *(RSSAC047 §5.1)*
+- [x] **Latencia de respuesta** — Mide el tiempo de respuesta a una consulta SOA y lo compara contra los umbrales del estándar (250 ms UDP / 500 ms TCP). *(RSSAC047 §5.2)*
+- [x] **Cumplimiento de estándares DNS y DNSSEC** — Valida respuestas sobre registros clave (SOA, NS, DNSKEY) y negativos (NXDOMAIN), verificando flags y registros de seguridad (RRSIG, NSEC/NSEC3). *(RSSAC047 §5.3)*
+- [x] **Tasa de éxito/fallo en DNSSEC** — Calcula el porcentaje de respuestas DNSSEC correctamente validadas versus fallidas. *(RSSAC047 §5.3)*
+- [x] **Validación de firma y registros DS** — Verifica que el registro DS corresponda con el DNSKEY publicado, comprobando la cadena de confianza. *(RSSAC047 §5.3)*
+- [x] **Redundancia y distribución de servidores NS** — Cuenta cuántas subredes distintas cubren los NS del dominio. *(RSSAC047 §4.6)*
+- [x] **Clasificación automática de errores DNSSEC** — Identifica y agrupa las causas frecuentes de fallo (ausencia de DS, DNSKEY, dominios sin firma). *(RSSAC047 §4.8)*
+
+### Trabajo a futuro
+
+- [ ] **Latencia de publicación** — Medir cuánto tarda un vantage point en observar un nuevo serial SOA tras un cambio en la zona. *(RSSAC047 §5.4)*
+- [ ] **Detalles de fallos DNSSEC** — Desglose fino de errores: firmas inválidas, inconsistencias entre secciones, etc. *(RSSAC047 §4.8)*
+- [ ] **Métricas bajo condiciones adversas** — Evaluar comportamiento ante latencia elevada, pérdida de paquetes o tráfico intenso.
+- [ ] **Métricas agregadas a nivel de sistema (RSS)** — Disponibilidad y latencia a nivel de todo el sistema raíz. *(RSSAC047 §6)*
+- [ ] **Separación entre respuestas positivas y negativas** — Aplicar reglas de validación distintas según el tipo de respuesta esperada. *(RSSAC047 §5.3)*
+- [ ] **Inclusión de NSID en las consultas** — Identificar exactamente qué instancia respondió, útil para diagnóstico en redes anycast. *(RSSAC047 §4.8)*
+- [ ] **Diversidad geográfica de vantage points** — Expandir a múltiples puntos de medición distribuidos por región y red (mínimo 20 recomendados). *(RSSAC047 §3.1, §3.2)*
+
+Para más detalle ver la sección de Implementaciones/lista_implementaciones.txt
 
 
 
