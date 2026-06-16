@@ -138,11 +138,22 @@ reemplazando el id del container y la carpeta de destino que desea utilizar
 
 
 
-## Nuevos features
+## Métricas y features
 
-Se busca implementar nuevas métricas alineadas al estándar [RSSAC047](https://www.icann.org/groups/ssac/rssac-047). Para cada dominio de entrada, realiza consultas DNS reales y evalúa las respuestas según los siguientes criterios:
+### Features originales del Observatorio
 
-### Implementado
+El Observatorio ya contaba con las siguientes capacidades antes de las mejoras implementadas en este trabajo:
+
+- [x] Recolección de datos DNS de un conjunto de dominios de entrada
+- [x] Geolocalización de direcciones IP (via GeoLite2 — país y ASN)
+- [x] Análisis básico de DNSSEC (presencia del registro, sin validación detallada)
+- [x] Almacenamiento de resultados en base de datos PostgreSQL
+- [x] Exportación de resultados en formato CSV y JSON
+- [x] Visualización de datos mediante [ObservatorioLAC-Graficos](https://github.com/niclabs/ObservatorioLAC-Graficos)
+
+### Nuevos features (RSSAC047)
+
+Se implementaron nuevas métricas alineadas al estándar [RSSAC047](https://www.icann.org/groups/ssac/rssac-047), evaluando las respuestas DNS de cada dominio según los siguientes criterios:
 
 - [x] **Disponibilidad por versión de IP (IPv4/IPv6)** — Evalúa si los NS responden correctamente por ambas versiones del protocolo. *(RSSAC047 §5.1)*
 - [x] **Disponibilidad por tipo de transporte (UDP/TCP)** — Verifica que los NS soporten consultas por UDP y TCP. *(RSSAC047 §5.1)*
@@ -163,7 +174,4 @@ Se busca implementar nuevas métricas alineadas al estándar [RSSAC047](https://
 - [ ] **Inclusión de NSID en las consultas** — Identificar exactamente qué instancia respondió, útil para diagnóstico en redes anycast. *(RSSAC047 §4.8)*
 - [ ] **Diversidad geográfica de vantage points** — Expandir a múltiples puntos de medición distribuidos por región y red (mínimo 20 recomendados). *(RSSAC047 §3.1, §3.2)*
 
-Para más detalle ver la sección de Implementaciones/lista_implementaciones.txt
-
-
-
+Para más detalle ver `Implementaciones/lista_implementaciones.txt`
